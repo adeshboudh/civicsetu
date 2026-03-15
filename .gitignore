@@ -19,3 +19,7 @@ infra/.cache/
 .cache/
 *.DS_Store
 __MACOSX/
+.mypy_cache/
+*.onnx
+*.egg-info/
+.pytest_cache/
