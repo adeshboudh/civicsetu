@@ -10,6 +10,7 @@ from civicsetu.agent.nodes import (
     reranker_node,
     validator_node,
     vector_retrieval_node,
+    graph_retrieval_node,
 )
 from civicsetu.agent.state import CivicSetuState
 
@@ -33,6 +34,7 @@ def build_graph() -> StateGraph:
     # ── Register nodes ─────────────────────────────────────────────────────────
     graph.add_node("classifier",        classifier_node)
     graph.add_node("vector_retrieval",  vector_retrieval_node)
+    graph.add_node("graph_retrieval",   graph_retrieval_node)
     graph.add_node("reranker",          reranker_node)
     graph.add_node("generator",         generator_node)
     graph.add_node("validator",         validator_node)
@@ -45,9 +47,13 @@ def build_graph() -> StateGraph:
     graph.add_conditional_edges(
         "classifier",
         route_after_classifier,
-        {"vector_retrieval": "vector_retrieval"},
+        {
+            "vector_retrieval": "vector_retrieval",
+            "graph_retrieval":  "graph_retrieval",
+        },
     )
     graph.add_edge("vector_retrieval", "reranker")
+    graph.add_edge("graph_retrieval",  "reranker")
     graph.add_edge("reranker",         "generator")
     graph.add_edge("generator",        "validator")
     graph.add_conditional_edges(
