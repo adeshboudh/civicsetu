@@ -125,7 +125,51 @@ def vector_retrieval_node(state: CivicSetuState) -> dict:
     log.info("vector_retrieval_complete", results=len(chunks))
     return {"retrieved_chunks": chunks}
 
+def graph_retrieval_node(state: CivicSetuState) -> dict:
+    """
+    Graph-based retrieval for cross_reference and temporal queries.
+    Traverses REFERENCES edges in Neo4j then hydrates chunks from pgvector.
+    Results are merged with vector results via Annotated[list, operator.add].
+    """
+    from civicsetu.retrieval.graph_retriever import GraphRetriever
 
+    query = state.get("rewritten_query") or state["query"]
+    jurisdiction = state.get("jurisdiction_filter")
+    top_k = state.get("top_k", 5)
+
+    log.info("graph_retrieval_node", query=query[:80])
+
+    async def _retrieve():
+        return await GraphRetriever.retrieve(
+            query=query,
+            jurisdiction=jurisdiction,
+            depth=2,
+        )
+
+    chunks = asyncio.run(_retrieve())
+    log.info("graph_retrieval_complete", results=len(chunks))
+    
+    # Fallback: if graph found nothing (no explicit section in query),
+    # run vector retrieval instead
+    if not chunks:
+        log.info("graph_retrieval_fallback_to_vector", query=query[:80])
+        query_embedding = _embedder.embed_query(query)
+
+        async def _vector_fallback():
+            async with AsyncSessionLocal() as session:
+                return await VectorStore.similarity_search(
+                    session=session,
+                    query_embedding=query_embedding,
+                    top_k=top_k,
+                    jurisdiction=jurisdiction,
+                    active_only=True,
+                )
+
+        chunks = asyncio.run(_vector_fallback())
+        log.info("graph_fallback_complete", results=len(chunks))
+
+    return {"retrieved_chunks": chunks}
+    
 # ── Node 3: Reranker ───────────────────────────────────────────────────────────
 
 def reranker_node(state: CivicSetuState) -> dict:
