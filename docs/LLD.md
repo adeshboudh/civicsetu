@@ -1,6 +1,6 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 0.1.0 (Phase 0)
+**Version:** 0.2.0 — Phase 1 Complete
 **Last Updated:** March 2026
 
 ---
@@ -179,12 +179,15 @@ class CivicSetuState(TypedDict):
 
 ### Routing Logic
 
-```
-classifier → route_after_classifier:
-    fact_lookup, penalty_lookup    → vector_retrieval
-    cross_reference, temporal      → graph_retrieval (Phase 1) / vector_retrieval (Phase 0)
-    conflict_detection             → hybrid_retrieval (Phase 3) / vector_retrieval (Phase 0)
+| classifier → route_after_classifier  |                                          |
+|---------------------------------------|------------------------------------------|
+| fact_lookup                           | vector_retrieval                         |
+| cross_reference                       | graph_retrieval (→ vector fallback)      |
+| penalty_lookup                        | graph_retrieval (→ vector fallback)      |
+| temporal                              | graph_retrieval (→ vector fallback)      |
+| conflict_detection                    | hybrid_retrieval (Phase 3)               |
 
+```
 validator → route_after_validator:
     confidence >= 0.5 AND not hallucinated → END
     (confidence < 0.5 OR hallucinated) AND retry_count < 2 → retry → classifier
@@ -291,3 +294,25 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 | DB unreachable | `/health` returns `degraded`, query returns 500 |
 | Scanned PDF detected | Warning logged, text extracted as-is, Surya OCR Phase 2 |
 | Section patterns not matched | Fallback paragraph chunking, warning logged |
+
+## 8. Neo4j Graph — Phase 1 Implemented State
+
+**Nodes seeded:** 1 Document, 224 Section nodes
+**Edges seeded:** 224 HAS_SECTION, 63 REFERENCES
+
+**MetadataExtractor rules:**
+- Sentence-level cross-act scrub: IPC, CPC, Companies Act, Consumer Protection Act,
+  Chartered Accountants Act, Income Tax Act, Constitution, Arbitration Act
+- RERA section bounds filter: sections 1–92 only
+- Word-boundary number extraction: prevents "19" matching inside "196"
+
+**GraphRetriever traversal:**
+- Outgoing: sections that source section cites
+- Incoming: sections that cite source section
+- Depth: 2 hops
+- Fallback: vector retrieval when query contains no explicit section number
+
+**Classifier routing (Phase 1):**
+- Any query with explicit section number (e.g. "Section 18") → cross_reference
+- cross_reference + penalty_lookup + temporal → graph_retrieval node
+- fact_lookup + conflict_detection → vector_retrieval node

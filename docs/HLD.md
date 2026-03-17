@@ -1,8 +1,8 @@
 # CivicSetu — High Level Design (HLD)
 
-**Version:** 0.1.0 (Phase 0)
+**Version:** 0.2.0 — Phase 1 Complete
 **Last Updated:** March 2026
-**Status:** Phase 0 Complete
+**Status:** Phase 1 Complete — Graph Retrieval Live
 
 ---
 
@@ -85,7 +85,8 @@ User Query
 → Input Guardrails  (Phase 1)
 → Classifier Node   (LLM — query_type + rewritten_query)
 → Vector Retrieval  (pgvector cosine search, top_k chunks)
-→ Graph Retrieval   (Neo4j Cypher — Phase 1, cross_reference + temporal)
+→ Graph Retrieval   (Neo4j Cypher, REFERENCES traversal (bidirectional, depth=2))
+                    Fallback: vector retrieval when no section ID in query
 → Reranker          (FlashRank ms-marco-MiniLM-L-12-v2, cross-encoder)
 → Generator Node    (LLM — structured JSON answer with citations)
 → Validator Node    (LLM — hallucination + confidence check)
@@ -135,12 +136,13 @@ All routing handled by LiteLLM. Model swap = config change only.
 
 Input:  {"query": "What are builder obligations under Section 18?"}
 
-Step 1 — Classify:     query_type=fact_lookup, rewrite query
-Step 2 — Retrieve:     top 5 chunks by cosine similarity
-Step 3 — Rerank:       cross-encoder scores, top 5 ordered
-Step 4 — Generate:     LLM produces JSON with answer + citations
-Step 5 — Validate:     hallucination check, confidence score
-Step 6 — Respond:      CivicSetuResponse with citations + disclaimer
+Step 1  Classify    → query_type=cross_reference (explicit section number detected)
+Step 2  Graph       → traverse Section 18 node, incoming + outgoing REFERENCES edges
+Step 2b Fallback    → vector retrieval if graph returns 0 results
+Step 3  Rerank      → cross-encoder scores, top 5 ordered
+Step 4  Generate    → LLM produces JSON with answer + citations
+Step 5  Validate    → hallucination check, confidence score (skip retry if empty retrieval)
+Step 6  Respond     → CivicSetuResponse with citations + disclaimer
 
 Output: {
 "answer": "Under Section 18(1)...",
@@ -156,14 +158,15 @@ Output: {
 
 ## 7. Phase Roadmap
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | RERA Act 2016, vector RAG, FastAPI | ✅ Complete |
-| 1 | Neo4j graph, MahaRERA Rules, cross-reference queries | 🔜 Next |
-| 2 | Amendment tracking, Surya OCR, MahaRERA Circulars | Planned |
-| 3 | Conflict detection, multi-document reasoning | Planned |
-| 4 | Multi-state expansion (UPRERA, TNRERA, KRERA) | Planned |
-| 5 | Open-source SaaS, UI, public API | Planned |
+| Phase | Scope                                          | Status              |
+|-------|------------------------------------------------|---------------------|
+| 0     | RERA Act 2016, vector RAG, FastAPI             | ✅ Complete         |
+| 1     | Neo4j graph, cross-reference queries           | ✅ Complete         |
+| 2     | MahaRERA Rules + Circulars, amendment tracking | 🔜 Next             |
+| 3     | Conflict detection, multi-document reasoning   | Planned             |
+| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | Planned             |
+| 5     | Open-source SaaS, UI, public API               | Planned             |
+
 
 ---
 
