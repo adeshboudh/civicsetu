@@ -1,8 +1,8 @@
 # CivicSetu — High Level Design (HLD)
 
-**Version:** 0.2.0 — Phase 1 Complete
+**Version:** 0.3.0 — Phase 2 Complete
 **Last Updated:** March 2026
-**Status:** Phase 1 Complete — Graph Retrieval Live
+**Status:** Phase 2 Complete — Multi-jurisdiction ingestion live
 
 ---
 
@@ -15,7 +15,7 @@ amendment tracking, and conflict detection between laws.
 **Target Users:** Indian citizens, lawyers, homebuyers, activists navigating RERA, RTI,
 labor law, GST compliance, and other civic frameworks.
 
-**Phase 0 Scope:** RERA Act 2016 (Central) — queryable via REST API.
+**Current Scope:** RERA Act 2016 (Central) + Maharashtra Real Estate Rules 2017.
 
 ---
 
@@ -27,28 +27,29 @@ labor law, GST compliance, and other civic frameworks.
 │                        CLIENT LAYER                              │
 │              HTTP REST (FastAPI) — /api/v1/query                 │
 └────────────────────────────┬─────────────────────────────────────┘
-│
+							 │
 ┌────────────────────────────▼─────────────────────────────────────┐
-│                     LANGGRAPH AGENT                               │
-│                                                                   │
+│                     LANGGRAPH AGENT                              │
+│                                                                  │
 │  [Classifier] → [Vector Retrieval] → [Reranker]                  │
-│       ↑               ↓ (Phase 1: + Graph Retrieval)             │
-│  [Retry]  ←  [Validator] ← [Generator]                          │
+│       ↑         [Graph Retrieval]  ↗                             │
+│  [Retry]  ←  [Validator] ← [Generator]                           │
 └────────────────────────────┬─────────────────────────────────────┘
-│
-┌────────────────────┼─────────────────────┐
-│                    │                      │
-┌───────▼──────┐   ┌─────────▼───────┐   ┌────────▼────────┐
-│  pgvector    │   │   Neo4j         │   │   PostgreSQL     │
-│  (vectors)   │   │  (graph)        │   │  (metadata)      │
-│  Phase 0 ✅  │   │  Phase 1 🔜     │   │  Phase 0 ✅      │
-└───────┬──────┘   └─────────┬───────┘   └────────┬────────┘
-│                    │                      │
-└────────────────────┴──────────────────────┘
-│
+							 │
+		  ┌──────────────────┼──────────────────────┐
+		  │                  │                      │
+  ┌───────▼──────┐   ┌───────▼─────────┐    ┌───────▼────────┐
+  │  pgvector    │   │   Neo4j         │    │   PostgreSQL   │
+  │  (vectors)   │   │   (graph)       │    │   (metadata)   │
+  │  Phase 0     │   │   Phase 1       │    │   Phase 0      │
+  └───────┬──────┘   └───────┬─────────┘    └───────┬────────┘
+          │                  │                      │
+          └──────────────────┴──────────────────────┘
+							 │
 ┌────────────────────────────▼─────────────────────────────────────┐
-│                    INGESTION PIPELINE                             │
+│                    INGESTION PIPELINE                            │
 │  Download → Parse → Chunk → Enrich → Embed → Store               │
+│  document_registry.py — single source of truth for all doc URLs  │
 └──────────────────────────────────────────────────────────────────┘
 
 ```
@@ -63,15 +64,15 @@ Runs once per document. Triggered via `make ingest` or `POST /api/v1/ingest`.
 
 ```
 
-PDF URL
-→ Downloader       (httpx, cached locally)
-→ PDFParser        (PyMuPDF, text extraction)
-→ LegalChunker     (section-boundary regex)
-→ MetadataExtractor(dates, references, amendment signals)
-→ Embedder         (nomic-embed-text via Ollama, local)
-→ RelationalStore  (PostgreSQL — documents + legal_chunks tables)
-→ VectorStore      (pgvector — HNSW index, cosine similarity)
-→ GraphStore       (Neo4j — Phase 1)
+PDF URL (from document_registry.py)
+→ Downloader        (httpx, cached locally with MD5 check)
+→ PDFParser         (PyMuPDF, text extraction, scanned page detection)
+→ LegalChunker      (multi-format regex: Act + Rule boundary detection)
+→ MetadataExtractor (dates, cross-references, amendment signals)
+→ Embedder          (nomic-embed-text via Ollama, MAX_EMBED_CHARS=6000 guard)
+→ RelationalStore   (PostgreSQL — documents + legal_chunks tables)
+→ VectorStore       (pgvector — HNSW index, cosine similarity)
+→ GraphStore        (Neo4j — Document + Section nodes + edges)
 
 ```
 
@@ -82,15 +83,15 @@ Triggered on every `POST /api/v1/query`.
 ```
 
 User Query
-→ Input Guardrails  (Phase 1)
+→ Input Guardrails  (PII + off-topic filter)
 → Classifier Node   (LLM — query_type + rewritten_query)
-→ Vector Retrieval  (pgvector cosine search, top_k chunks)
-→ Graph Retrieval   (Neo4j Cypher, REFERENCES traversal (bidirectional, depth=2))
-                    Fallback: vector retrieval when no section ID in query
+→ Vector Retrieval  (pgvector cosine search, top_k chunks)  ← fact_lookup
+→ Graph Retrieval   (Neo4j, REFERENCES traversal, depth=2)  ← cross_reference / penalty / temporal
+Fallback: vector retrieval when no section ID in query
 → Reranker          (FlashRank ms-marco-MiniLM-L-12-v2, cross-encoder)
 → Generator Node    (LLM — structured JSON answer with citations)
 → Validator Node    (LLM — hallucination + confidence check)
-→ Output Guardrails (Phase 1)
+→ Output Guardrails (faithfulness check + disclaimer injection)
 → CivicSetuResponse (answer + citations + confidence + disclaimer)
 
 ```
@@ -99,19 +100,20 @@ User Query
 
 ## 4. Component Responsibilities
 
-| Component | Responsibility | Technology |
-|---|---|---|
-| PDFParser | Text extraction from PDFs | PyMuPDF |
-| LegalChunker | Section-boundary splitting | Regex + fallback |
-| MetadataExtractor | Date, reference, amendment extraction | Regex |
-| Embedder | Dense vector generation | nomic-embed-text (Ollama) |
-| VectorStore | Semantic similarity search | pgvector + HNSW |
-| GraphStore | Section relationship traversal | Neo4j Community |
-| RelationalStore | Metadata persistence + chunk storage | PostgreSQL + SQLAlchemy |
-| LangGraph Agent | Query orchestration state machine | LangGraph |
-| LiteLLM Gateway | LLM provider fallback routing | LiteLLM |
-| FastAPI | HTTP API layer | FastAPI + Uvicorn |
-| FlashRank | Cross-encoder reranking | ONNX local model |
+| Component          | Responsibility                              | Technology                      |
+|--------------------|---------------------------------------------|---------------------------------|
+| DocumentRegistry   | Centralised doc URL + metadata management   | Python dataclass                |
+| PDFParser          | Text extraction from PDFs                   | PyMuPDF                         |
+| LegalChunker       | Multi-format section-boundary splitting     | Regex (Act + Rule patterns)     |
+| MetadataExtractor  | Date, reference, amendment extraction       | Regex                           |
+| Embedder           | Dense vector generation + truncation guard  | nomic-embed-text (Ollama)       |
+| VectorStore        | Semantic similarity search                  | pgvector + HNSW                 |
+| GraphStore         | Section relationship traversal              | Neo4j Community                 |
+| RelationalStore    | Metadata persistence + chunk storage        | PostgreSQL + SQLAlchemy         |
+| LangGraph Agent    | Query orchestration state machine           | LangGraph                       |
+| LiteLLM Gateway    | LLM provider fallback routing               | LiteLLM                         |
+| FastAPI            | HTTP API layer                              | FastAPI + Uvicorn               |
+| FlashRank          | Cross-encoder reranking                     | ONNX local model                |
 
 ---
 
@@ -141,7 +143,7 @@ Step 2  Graph       → traverse Section 18 node, incoming + outgoing REFERENCES
 Step 2b Fallback    → vector retrieval if graph returns 0 results
 Step 3  Rerank      → cross-encoder scores, top 5 ordered
 Step 4  Generate    → LLM produces JSON with answer + citations
-Step 5  Validate    → hallucination check, confidence score (skip retry if empty retrieval)
+Step 5  Validate    → hallucination check, confidence score
 Step 6  Respond     → CivicSetuResponse with citations + disclaimer
 
 Output: {
@@ -158,24 +160,23 @@ Output: {
 
 ## 7. Phase Roadmap
 
-| Phase | Scope                                          | Status              |
-|-------|------------------------------------------------|---------------------|
-| 0     | RERA Act 2016, vector RAG, FastAPI             | ✅ Complete         |
-| 1     | Neo4j graph, cross-reference queries           | ✅ Complete         |
-| 2     | MahaRERA Rules + Circulars, amendment tracking | 🔜 Next             |
-| 3     | Conflict detection, multi-document reasoning   | Planned             |
-| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | Planned             |
-| 5     | Open-source SaaS, UI, public API               | Planned             |
-
+| Phase | Scope                                          | Status          |
+|-------|------------------------------------------------|-----------------|
+| 0     | RERA Act 2016, vector RAG, FastAPI             | ✅ Complete     |
+| 1     | Neo4j graph, cross-reference queries           | ✅ Complete     |
+| 2     | MahaRERA Rules 2017, multi-jurisdiction        | ✅ Complete     |
+| 3     | DERIVED_FROM edges, conflict detection         | Next            |
+| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | Planned         |
+| 5     | Open-source SaaS, UI, public API               | Planned         |
 
 ---
 
 ## 8. Non-Functional Requirements
 
-| Requirement | Target | Current Status |
-|---|---|---|
-| Response latency | < 10s per query | ~5–8s (local embedding) |
-| Citation accuracy | 100% — never answer without citation | Enforced by schema |
-| Hallucination rate | < 5% | Validator node + confidence gate |
-| Cost | $0 for dev/staging | ✅ All free tier |
-| Portability | Runs on any machine with Docker | ✅ Docker Compose |
+| Requirement        | Target                               | Current Status                  |
+|--------------------|--------------------------------------|---------------------------------|
+| Response latency   | < 10s per query                      | ~5–8s (local embedding)         |
+| Citation accuracy  | 100% — never answer without citation | Enforced by schema              |
+| Hallucination rate | < 5%                                 | Validator node + confidence gate|
+| Cost               | $0 for dev/staging                   | All free tier                   |
+| Portability        | Runs on any machine with Docker      | Docker Compose                  |
