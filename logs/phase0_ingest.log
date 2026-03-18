@@ -1,0 +1,17 @@
+2026-03-19 01:26:18 [info     ] ingestion_started              doc_name='RERA Act 2016' url=https://www.indiacode.nic.in/bitstream/123456789/2276/1/A2016-16.pdf
+2026-03-19 01:26:18 [info     ] download_skipped_cached        path=data\raw\acts\rera_act_2016.pdf
+2026-03-19 01:26:18 [info     ] parsing_pdf                    source=data\raw\acts\rera_act_2016.pdf
+2026-03-19 01:26:18 [info     ] pdf_parsed                     scanned_pages=0 source=data\raw\acts\rera_act_2016.pdf total_chars=131196 total_pages=36
+2026-03-19 01:26:18 [info     ] chunking_complete              chunks_produced=298 doc_name='RERA Act 2016' sections_found=86
+2026-03-19 01:26:18 [info     ] metadata_enriched              count=298
+2026-03-19 01:27:44 [info     ] batch_embedded                 count=298 model=nomic-embed-text
+2026-03-19 01:27:44 [info     ] upserted_document              doc_id=ca069267-9e1a-45ce-b995-e1af647d1521 doc_name='RERA Act 2016'
+2026-03-19 01:27:58 [info     ] bulk_inserted_chunks           count=298
+2026-03-19 01:27:58 [info     ] ingestion_complete             chunks=298 doc_id=ca069267-9e1a-45ce-b995-e1af647d1521 doc_name='RERA Act 2016'
+2026-03-19 01:27:58 [info     ] phase0_ingest_complete         chunks=298 doc_id=ca069267-9e1a-45ce-b995-e1af647d1521
+2026-03-19 01:27:58 [info     ] neo4j_constraints_created
+2026-03-19 01:27:58 [info     ] graph_seeder_docs_loaded       count=1
+2026-03-19 01:27:58 [info     ] neo4j_document_upserted        doc_id=ca069267-9e1a-45ce-b995-e1af647d1521 doc_name='RERA Act 2016'
+2026-03-19 01:27:58 [info     ] graph_seeder_chunks_loaded     count=298 doc_name='RERA Act 2016'
+2026-03-19 01:28:03 [info     ] graph_seeding_complete         docs=1 graph_stats={'docs': 4, 'sections': 950, 'refs': 518, 'has_sec': 950, 'derived_from': 18} ref_edges=121 sections=298
+2026-03-19 01:28:03 [info     ] phase0_graph_seed_complete     stats={'docs': 4, 'sections': 950, 'refs': 518, 'has_sec': 950, 'derived_from': 18}

@@ -1,32 +1,30 @@
-2026-03-18 17:19:23 [info     ] phase2_ingest_start            doc='Maharashtra Real Estate (Regulation and Development) Rules 2017' url=https://naredco.in/notification/pdfs/RERA%20Final%20English%20Registration%20Rules21042017.pdf
-2026-03-18 17:19:23 [info     ] ingestion_started              doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017' url=https://naredco.in/notification/pdfs/RERA%20Final%20English%20Registration%20Rules21042017.pdf
-2026-03-18 17:19:23 [info     ] download_skipped_cached        path=data\raw\rules\mahrera_rules_2017.pdf
-2026-03-18 17:19:23 [info     ] parsing_pdf                    source=data\raw\rules\mahrera_rules_2017.pdf
-2026-03-18 17:19:24 [info     ] pdf_parsed                     scanned_pages=0 source=data\raw\rules\mahrera_rules_2017.pdf total_chars=140204 total_pages=62
-2026-03-18 17:19:24 [info     ] chunking_complete              chunks_produced=214 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017' sections_found=44
-2026-03-18 17:19:24 [info     ] metadata_enriched              count=214
-2026-03-18 17:20:44 [warning  ] embedding_truncated            original_len=7022 truncated_to=6000
-2026-03-18 17:20:54 [warning  ] embedding_truncated            original_len=7098 truncated_to=6000
-2026-03-18 17:21:37 [info     ] batch_embedded                 count=214 model=nomic-embed-text
-2026-03-18 17:21:38 [info     ] upserted_document              doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
-2026-03-18 17:21:48 [info     ] bulk_inserted_chunks           count=214
-2026-03-18 17:21:48 [info     ] ingestion_complete             chunks=214 doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
-2026-03-18 17:21:48 [info     ] phase2_ingest_complete         chunks=214 doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8
-2026-03-18 17:21:48 [info     ] phase2_graph_seed_start        doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8
-2026-03-18 17:21:49 [info     ] neo4j_constraints_created
-2026-03-18 17:21:49 [info     ] graph_seeder_docs_loaded       count=1
-2026-03-18 17:21:51 [info     ] neo4j_document_upserted        doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
-2026-03-18 17:21:51 [info     ] graph_seeder_chunks_loaded     count=214 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
-2026-03-18 17:21:58 [info     ] graph_seeding_complete         docs=1 graph_stats={'docs': 2, 'sections': 438, 'refs': 124, 'has_sec': 438} ref_edges=61 sections=214
-2026-03-18 17:21:58 [info     ] phase2_graph_seed_complete     stats={'docs': 2, 'sections': 438, 'refs': 124, 'has_sec': 438}
+2026-03-19 01:20:25 [info     ] phase2_ingest_start            doc='Maharashtra Real Estate (Regulation and Development) Rules 2017' url=https://naredco.in/notification/pdfs/RERA%20Final%20English%20Registration%20Rules21042017.pdf
+2026-03-19 01:20:25 [info     ] ingestion_started              doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017' url=https://naredco.in/notification/pdfs/RERA%20Final%20English%20Registration%20Rules21042017.pdf
+2026-03-19 01:20:25 [info     ] download_skipped_cached        path=data\raw\rules\mahrera_rules_2017.pdf
+2026-03-19 01:20:25 [info     ] parsing_pdf                    source=data\raw\rules\mahrera_rules_2017.pdf
+2026-03-19 01:20:25 [info     ] pdf_parsed                     scanned_pages=0 source=data\raw\rules\mahrera_rules_2017.pdf total_chars=140204 total_pages=62
+2026-03-19 01:20:25 [info     ] chunking_complete              chunks_produced=214 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017' sections_found=44
+2026-03-19 01:20:26 [info     ] metadata_enriched              count=214
+2026-03-19 01:21:40 [warning  ] embedding_truncated            original_len=7022 truncated_to=6000
+2026-03-19 01:21:48 [warning  ] embedding_truncated            original_len=7098 truncated_to=6000
+2026-03-19 01:22:20 [info     ] batch_embedded                 count=214 model=nomic-embed-text
+2026-03-19 01:22:20 [info     ] upserted_document              doc_id=32f0ce40-3079-4f43-983e-35a4707f3064 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
+2026-03-19 01:22:33 [info     ] bulk_inserted_chunks           count=214
+2026-03-19 01:22:33 [info     ] ingestion_complete             chunks=214 doc_id=32f0ce40-3079-4f43-983e-35a4707f3064 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
+2026-03-19 01:22:33 [info     ] phase2_ingest_complete         chunks=214 doc_id=32f0ce40-3079-4f43-983e-35a4707f3064
+2026-03-19 01:22:33 [info     ] phase2_graph_seed_start        doc_id=32f0ce40-3079-4f43-983e-35a4707f3064
+2026-03-19 01:22:33 [info     ] neo4j_constraints_created
+2026-03-19 01:22:33 [info     ] graph_seeder_docs_loaded       count=1
+2026-03-19 01:22:33 [info     ] neo4j_document_upserted        doc_id=32f0ce40-3079-4f43-983e-35a4707f3064 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
+2026-03-19 01:22:33 [info     ] graph_seeder_chunks_loaded     count=214 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
+2026-03-19 01:22:37 [info     ] graph_seeding_complete         docs=1 graph_stats={'docs': 3, 'sections': 652, 'refs': 397, 'has_sec': 652, 'derived_from': 18} ref_edges=167 sections=214
+2026-03-19 01:22:37 [info     ] phase2_graph_seed_complete     stats={'docs': 3, 'sections': 652, 'refs': 397, 'has_sec': 652, 'derived_from': 18}
 
 ============================================================
-Traceback (most recent call last):
-  File "D:\PycharmProjects\civicsetu\scripts\ingest_phase2.py", line 69, in <module>
-    main()
-  File "D:\PycharmProjects\civicsetu\scripts\ingest_phase2.py", line 59, in main
-    print(f"\u2705 Phase 2 ingestion complete")
-  File "C:\Users\adesh\AppData\Roaming\uv\python\cpython-3.11-windows-x86_64-none\Lib\encodings\cp1252.py", line 19, in encode
-    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+Phase 2 ingestion complete
+   Document  : Maharashtra Real Estate (Regulation and Development) Rules 2017
+   Doc ID    : 32f0ce40-3079-4f43-983e-35a4707f3064
+   Chunks    : 214
+   Sections  : 652
+   REFERENCES: 397
+============================================================

@@ -1,6 +1,6 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 0.2.0 — Phase 1 Complete
+**Version:** 0.3.0 — Phase 3 Complete
 **Last Updated:** March 2026
 
 ---
@@ -15,21 +15,22 @@ src/civicsetu/
 │   └── document_registry.py  All document URLs + metadata (single source of truth)
 ├── models/
 │   ├── enums.py              StrEnum: Jurisdiction, DocType, QueryType, etc.
-│   └── schemas.py            Pydantic models: LegalChunk, Citation, CivicSetuResponse
+│   └── schemas.py            Pydantic models: LegalChunk, Citation, RetrievedChunk, CivicSetuResponse
 ├── ingestion/
 │   ├── downloader.py         httpx PDF downloader with MD5 cache check
 │   ├── parser.py             PyMuPDF text extractor, scanned PDF detection
 │   ├── chunker.py            Section-boundary regex chunker + fallback
-│   ├── metadata_extractor.py Date/reference/amendment regex extraction
+│   ├── metadata_extractor.py Date/Section/Rule reference/amendment regex extraction
 │   ├── embedder.py           nomic-embed-text via Ollama (document + query prefixes)
-│   └── pipeline.py           Orchestrates all ingestion steps end-to-end
+│   ├── pipeline.py           Orchestrates all ingestion steps end-to-end
+│   └── graph_seeder.py       Post-ingestion REFERENCES + DERIVED_FROM edge seeding
 ├── stores/
 │   ├── relational_store.py   Async SQLAlchemy — documents + legal_chunks tables
 │   ├── vector_store.py       pgvector HNSW cosine search
-│   └── graph_store.py        Neo4j Cypher interface (Phase 1)
+│   └── graph_store.py        Neo4j Cypher interface — fresh driver per call
 ├── retrieval/
 │   ├── vector_retriever.py   Wraps VectorStore for agent use
-│   ├── graph_retriever.py    Cypher query builder (Phase 1)
+│   ├── graph_retriever.py    REFERENCES + DERIVED_FROM traversal, Section/Rule ID extraction
 │   └── reranker.py           FlashRank cross-encoder wrapper
 ├── agent/
 │   ├── state.py              CivicSetuState TypedDict (frozen contract)
@@ -43,16 +44,16 @@ src/civicsetu/
 │   ├── generator.py          Cited answer generation prompt
 │   └── validator.py          Hallucination + confidence check prompt
 ├── guardrails/
-│   ├── input_guard.py        PII detection + off-topic filter (Phase 1)
-│   └── output_guard.py       Faithfulness check + disclaimer injection (Phase 1)
+│   ├── input_guard.py        PII detection + off-topic filter
+│   └── output_guard.py       Faithfulness check + disclaimer injection
 └── api/
-├── main.py                   FastAPI app factory + lifespan (graph pre-compiled)
-├── routes/
-│   ├── health.py             GET /health — DB ping
-│   ├── query.py              POST /api/v1/query — main RAG endpoint
-│   └── ingest.py             POST /api/v1/ingest — Phase 1 admin endpoint
-└── middleware/
-└── logging.py                Request/response structured logging
+    ├── main.py               FastAPI app factory + lifespan (graph pre-compiled)
+    ├── routes/
+    │   ├── health.py         GET /health — DB ping
+    │   ├── query.py          POST /api/v1/query — main RAG endpoint
+    │   └── ingest.py         POST /api/v1/ingest — admin endpoint
+    └── middleware/
+        └── logging.py        Request/response structured logging
 
 ```
 
@@ -67,7 +68,7 @@ documents (
     doc_id          UUID PRIMARY KEY,
     doc_name        TEXT,
     jurisdiction    TEXT,   -- Jurisdiction enum value
-    doc_type        TEXT,   -- DocType enum value
+    doc_type        TEXT,   -- DocType enum value  (stored uppercase: ACT, RULES)
     source_url      TEXT,
     effective_date  DATE,
     gazette_number  TEXT,
@@ -82,7 +83,7 @@ legal_chunks (
     jurisdiction        TEXT,
     doc_type            TEXT,
     doc_name            TEXT,
-    section_id          TEXT,   -- "18", "Rule 12", "Para-3"
+    section_id          TEXT,   -- "18", "3(2)", "Para-3"
     section_title       TEXT,
     section_hierarchy   TEXT[], -- ["RERA Act 2016", "18"]
     text                TEXT,
@@ -113,23 +114,29 @@ Tuned for recall/speed balance at <10K vectors. Revisit at 100K+.
 ```
 Nodes:
   (:Document {doc_id, doc_name, jurisdiction, doc_type, effective_date})
-  (:Section  {section_id, title, chunk_id, jurisdiction, is_active})
-  (:Amendment{amendment_id, circular_number, issued_date, effective_date})
-  (:Concept  {label})  -- "Promoter", "Allottee", "Carpet Area"
-  (:Penalty  {section_ref, amount_or_formula, trigger_condition})
+  (:Section  {section_id, title, chunk_id, jurisdiction, doc_name, is_active})
 
 Edges:
   (:Document)-[:HAS_SECTION]->(:Section)
-  (:Section) -[:REFERENCES]->(:Section)
+  (:Section) -[:REFERENCES]->(:Section)       -- intra + cross-jurisdiction citations
+  (:Section) -[:DERIVED_FROM]->(:Section)     -- MahaRERA Rule N → RERA Act Sec M
+  (:Document)-[:DERIVED_FROM]->(:Document)    -- MahaRERA Rules → RERA Act 2016
+
+Planned (Phase 4+):
   (:Section) -[:SUPERSEDES]->(:Section)
   (:Section) -[:AMENDED_BY]->(:Amendment)
-  (:Amendment)-[:MODIFIES]->(:Section)
-  (:Section) -[:DEFINES]->(:Concept)
-  (:Section) -[:IMPOSES]->(:Penalty)
-  (:Section) -[:CONFLICTS_WITH]->(:Section)   -- Phase 3
-  (:Document)-[:DERIVED_FROM]->(:Document)    -- MahaRERA ← Central RERA
+  (:Section) -[:CONFLICTS_WITH]->(:Section)
 ```
 
+**Live graph stats (Phase 3):**
+
+| Metric        | Count |
+|---------------|-------|
+| Documents     | 2     |
+| Sections      | 438   |
+| HAS_SECTION   | 438   |
+| REFERENCES    | 171   |
+| DERIVED_FROM  | 18    |
 
 ---
 
@@ -166,6 +173,18 @@ class CivicSetuState(TypedDict):
     error: Optional[str]
 ```
 
+### RetrievedChunk Schema (`models/schemas.py`)
+
+```python
+class RetrievedChunk(BaseModel):
+    chunk: LegalChunk
+    vector_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_source: str = "vector"   # "vector" | "graph"
+    graph_path: Optional[str] = None   # e.g. "source:18@CENTRAL"
+    is_pinned: bool = False            # True = exact source section, bypasses reranker sort
+```
+
 
 ### Node Responsibilities
 
@@ -173,6 +192,7 @@ class CivicSetuState(TypedDict):
 | :-- | :-- | :-- | :-- |
 | classifier | query | query_type, rewritten_query | Yes |
 | vector_retrieval | rewritten_query, top_k | retrieved_chunks | No |
+| graph_retrieval | rewritten_query, top_k | retrieved_chunks | No |
 | reranker | retrieved_chunks, query | reranked_chunks | No |
 | generator | reranked_chunks, query | raw_response, citations, confidence_score | Yes |
 | validator | raw_response, reranked_chunks | hallucination_flag, confidence_score | Yes |
@@ -180,13 +200,13 @@ class CivicSetuState(TypedDict):
 
 ### Routing Logic
 
-| classifier → route_after_classifier  |                                          |
+| classifier → route_after_classifier   |                                          |
 |---------------------------------------|------------------------------------------|
 | fact_lookup                           | vector_retrieval                         |
 | cross_reference                       | graph_retrieval (→ vector fallback)      |
 | penalty_lookup                        | graph_retrieval (→ vector fallback)      |
 | temporal                              | graph_retrieval (→ vector fallback)      |
-| conflict_detection                    | hybrid_retrieval (Phase 3)               |
+| conflict_detection                    | hybrid_retrieval (Phase 4)               |
 
 ```
 validator → route_after_validator:
@@ -230,8 +250,6 @@ MIN_CHARS = 100   — discard fragments (headers, page numbers)
 MAX_CHARS = 1500  — split large sections at subsection markers (1), (2), (a), (b)
 ```
 
-Reduced from 2000 → 1500 to stay within nomic-embed-text practical token window.
-
 ### Split Priority for Large Sections
 
 ```
@@ -239,14 +257,6 @@ Reduced from 2000 → 1500 to stay within nomic-embed-text practical token windo
 2. Sentence boundary near MAX_CHARS: rfind('. ')
 3. Hard cut at MAX_CHARS (last resort)
 ```
-
-
-### Fallback Strategy
-
-If no section boundaries found (non-standard docs):
-→ Paragraph chunking on `\n\n` separator
-→ Logs `WARNING: fallback_paragraph_chunking`
-→ section_id becomes `Para-1`, `Para-2`, etc.
 
 ---
 
@@ -278,7 +288,41 @@ document where subsection splitting fails (complex tables, long definition lists
 
 ---
 
-## 6. Response Contract
+## 6. Graph Retriever — Phase 3 Logic
+
+`graph_retriever.py` — called on `cross_reference`, `penalty_lookup`, `temporal` query types.
+
+### Section ID Extraction
+
+```python
+# Matches both "Section 18" / "Sec 18" and "Rule 3" / "Rule 12A"
+section_pattern = re.compile(r'\b(?:section|sec\.?|s\.)\s*(\d+[A-Z]?)\b', re.IGNORECASE)
+rule_pattern    = re.compile(r'\bRule\s+(\d+[A-Z]?)\b', re.IGNORECASE)
+```
+
+Section pattern takes priority; Rule pattern is fallback.
+
+### Traversal Strategy (per jurisdiction)
+
+For each jurisdiction (`CENTRAL`, `MAHARASHTRA`):
+
+```
+1. Source section chunks    — exact section_id match → is_pinned=True
+2. REFERENCES outgoing      — sections source cites (depth=2)
+3. REFERENCES incoming      — sections that cite source
+4. DERIVED_FROM outgoing    — Act sections this Rule derives from
+5. DERIVED_FROM incoming    — Rule sections implementing this Act section
+```
+
+### Pinning Rule
+
+Only the exact `section_id` match gets `is_pinned=True`. Sub-sections like `3(2)`, `3(5)`
+are NOT pinned — they compete normally in the reranker.
+Max pinned chunks: 2 (one per jurisdiction). Remaining 3 slots filled by reranker.
+
+---
+
+## 7. Response Contract
 
 Every response from `POST /api/v1/query` conforms to:
 
@@ -289,7 +333,7 @@ CivicSetuResponse:
     confidence_score: float        # 0.0–1.0
     confidence_level: str          # computed: "high"/"medium"/"low"
     query_type_resolved: QueryType
-    conflict_warnings: list[str]   # empty in Phase 0
+    conflict_warnings: list[str]   # empty until Phase 4
     amendment_notice: Optional[str]
     disclaimer: str                # always present
 
@@ -306,7 +350,7 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 
 ---
 
-## 7. Error Handling
+## 8. Error Handling
 
 | Scenario | Behaviour |
 | :-- | :-- |
@@ -315,41 +359,62 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 | No chunks retrieved | `InsufficientInfoResponse` returned |
 | Hallucination detected | retry (max 2x) → low confidence answer |
 | DB unreachable | `/health` returns `degraded`, query returns 500 |
-| Scanned PDF detected | Warning logged, text extracted as-is, Surya OCR Phase 2 |
+| Scanned PDF detected | Warning logged, text extracted as-is |
 | Section patterns not matched | Fallback paragraph chunking, warning logged |
+| Neo4j event loop mismatch | Prevented — `_get_driver()` creates fresh driver per call |
 
-## 8. Neo4j Graph — Phase 1 Implemented State
+## 9. Neo4j Graph — Phase 3 State
 
-**Nodes seeded:** 1 Document, 224 Section nodes
-**Edges seeded:** 224 HAS_SECTION, 63 REFERENCES
+**Nodes:** 2 Documents, 438 Sections
+**Edges:** 438 HAS_SECTION, 171 REFERENCES, 18 DERIVED_FROM
 
-**MetadataExtractor rules:**
-- Sentence-level cross-act scrub: IPC, CPC, Companies Act, Consumer Protection Act,
-  Chartered Accountants Act, Income Tax Act, Constitution, Arbitration Act
-- RERA section bounds filter: sections 1–92 only
-- Word-boundary number extraction: prevents "19" matching inside "196"
+### Documents in graph
 
-**GraphRetriever traversal:**
-- Outgoing: sections that source section cites
-- Incoming: sections that cite source section
-- Depth: 2 hops
-- Fallback: vector retrieval when query contains no explicit section number
+| Document | Jurisdiction | Sections | REFERENCES | DERIVED_FROM |
+|---|---|---|---|---|
+| RERA Act 2016 | CENTRAL | 224 | 110 outgoing | — |
+| MahaRERA Rules 2017 | MAHARASHTRA | 214 | 61 intra + 0 cross-outgoing | 17 section + 1 doc |
 
-**Classifier routing (Phase 1):**
-- Any query with explicit section number (e.g. "Section 18") → cross_reference
-- cross_reference + penalty_lookup + temporal → graph_retrieval node
-- fact_lookup + conflict_detection → vector_retrieval node
+### DERIVED_FROM section map (`_SECTION_DERIVED_FROM_MAP`)
 
-## 8. Neo4j Graph — Phase 2 State
+17 hand-mapped MahaRERA Rule → RERA Act section pairs:
 
-**Nodes seeded:** 2 Documents, 438 Section nodes
-**Edges seeded:** 438 HAS_SECTION, 124 REFERENCES, 0 DERIVED_FROM (Phase 3)
+| MahaRERA Rule | RERA Act Section | Subject |
+|---|---|---|
+| 3 | 4 | Promoter registration info |
+| 4 | 4 | Promoter declaration |
+| 5 | 4 | Separate account |
+| 6 | 5 | Grant/rejection of project registration |
+| 7 | 6 | Extension of registration |
+| 8 | 7 | Revocation of registration |
+| 10 | 11 | Agreement for Sale |
+| 11 | 9 | Agent registration application |
+| 12 | 9 | Agent grant/rejection |
+| 14 | 10 | Obligations of real estate agents |
+| 15 | 9 | Revocation of agent registration |
+| 17 | 10 | Other functions of agent |
+| 18 | 19 | Rate of interest |
+| 19 | 18 | Timelines for refund |
+| 20 | 11 | Website disclosures (projects) |
+| 21 | 11 | Website disclosures (agents) |
+| 31 | 31 | Governing law / complaints |
 
-**Documents in graph:**
-- RERA Act 2016 (CENTRAL) — 224 sections, 63 REFERENCES edges
-- Maharashtra Real Estate Rules 2017 (MAHARASHTRA) — 214 sections, 61 REFERENCES edges
+### MetadataExtractor — reference patterns
 
-**Known issue (Phase 3 backlog):**
-Citation deduplication keys on `section_id` only, not `(section_id, doc_name)`.
-Cross-doc queries may show duplicate section IDs from different documents.
-Fix: update generator citation dedup to composite key.
+```python
+# Section references: "Section 18", "section 4A", "s. 9", "sec 18"
+extract_section_references(text) → list[str]
+
+# Rule references (Phase 3): "Rule 3", "Rule 12A", "under Rule 9"
+extract_rule_references(text) → list[str]
+```
+
+Cross-act scrub removes false positives from IPC, CPC, Companies Act, etc.
+RERA section bounds filter: sections 1–92 only.
+
+### GraphStore — driver lifecycle
+
+`_get_driver()` creates a **fresh** `AsyncDriver` on every call — no singleton, no
+`@lru_cache`. Every method wraps its session in `try/finally: await driver.close()`.
+This prevents `RuntimeError: Future attached to a different loop` when `asyncio.run()`
+is called multiple times in the same process (LangGraph sync `.invoke()` pattern).

@@ -1,8 +1,8 @@
 # CivicSetu — High Level Design (HLD)
 
-**Version:** 0.3.0 — Phase 2 Complete
+**Version:** 0.4.0 — Phase 3 Complete
 **Last Updated:** March 2026
-**Status:** Phase 2 Complete — Multi-jurisdiction ingestion live
+**Status:** Phase 3 Complete — Cross-jurisdiction graph edges live
 
 ---
 
@@ -35,9 +35,9 @@ labor law, GST compliance, and other civic frameworks.
 │       ↑         [Graph Retrieval]  ↗                             │
 │  [Retry]  ←  [Validator] ← [Generator]                           │
 └────────────────────────────┬─────────────────────────────────────┘
-							 │
-		  ┌──────────────────┼──────────────────────┐
-		  │                  │                      │
+                             │
+          ┌──────────────────┼──────────────────────┐
+	  │                  │                      │
   ┌───────▼──────┐   ┌───────▼─────────┐    ┌───────▼────────┐
   │  pgvector    │   │   Neo4j         │    │   PostgreSQL   │
   │  (vectors)   │   │   (graph)       │    │   (metadata)   │
@@ -45,7 +45,7 @@ labor law, GST compliance, and other civic frameworks.
   └───────┬──────┘   └───────┬─────────┘    └───────┬────────┘
           │                  │                      │
           └──────────────────┴──────────────────────┘
-							 │
+			     │
 ┌────────────────────────────▼─────────────────────────────────────┐
 │                    INGESTION PIPELINE                            │
 │  Download → Parse → Chunk → Enrich → Embed → Store               │
@@ -68,11 +68,12 @@ PDF URL (from document_registry.py)
 → Downloader        (httpx, cached locally with MD5 check)
 → PDFParser         (PyMuPDF, text extraction, scanned page detection)
 → LegalChunker      (multi-format regex: Act + Rule boundary detection)
-→ MetadataExtractor (dates, cross-references, amendment signals)
+→ MetadataExtractor (dates, Section X + Rule X cross-references, amendment signals)
 → Embedder          (nomic-embed-text via Ollama, MAX_EMBED_CHARS=6000 guard)
 → RelationalStore   (PostgreSQL — documents + legal_chunks tables)
 → VectorStore       (pgvector — HNSW index, cosine similarity)
 → GraphStore        (Neo4j — Document + Section nodes + edges)
+→ GraphSeeder       (REFERENCES + DERIVED_FROM edges seeded post-ingestion)
 
 ```
 
@@ -85,9 +86,14 @@ Triggered on every `POST /api/v1/query`.
 User Query
 → Input Guardrails  (PII + off-topic filter)
 → Classifier Node   (LLM — query_type + rewritten_query)
-→ Vector Retrieval  (pgvector cosine search, top_k chunks)  ← fact_lookup
-→ Graph Retrieval   (Neo4j, REFERENCES traversal, depth=2)  ← cross_reference / penalty / temporal
-Fallback: vector retrieval when no section ID in query
+→ Vector Retrieval  (pgvector cosine search, top_k chunks)           ← fact_lookup
+→ Graph Retrieval   (Neo4j — REFERENCES + DERIVED_FROM traversal)    ← cross_reference / penalty / temporal
+  ├── Outgoing REFERENCES  (sections this section cites)
+  ├── Incoming REFERENCES  (sections that cite this section)
+  ├── DERIVED_FROM outgoing (Act sections this Rule derives from)
+  └── DERIVED_FROM incoming (Rule sections that implement this Act section)
+  Fallback: vector retrieval when no section ID in query
+→ Source section pinning (exact match chunks bypass reranker)
 → Reranker          (FlashRank ms-marco-MiniLM-L-12-v2, cross-encoder)
 → Generator Node    (LLM — structured JSON answer with citations)
 → Validator Node    (LLM — hallucination + confidence check)
@@ -100,20 +106,21 @@ Fallback: vector retrieval when no section ID in query
 
 ## 4. Component Responsibilities
 
-| Component          | Responsibility                              | Technology                      |
-|--------------------|---------------------------------------------|---------------------------------|
-| DocumentRegistry   | Centralised doc URL + metadata management   | Python dataclass                |
-| PDFParser          | Text extraction from PDFs                   | PyMuPDF                         |
-| LegalChunker       | Multi-format section-boundary splitting     | Regex (Act + Rule patterns)     |
-| MetadataExtractor  | Date, reference, amendment extraction       | Regex                           |
-| Embedder           | Dense vector generation + truncation guard  | nomic-embed-text (Ollama)       |
-| VectorStore        | Semantic similarity search                  | pgvector + HNSW                 |
-| GraphStore         | Section relationship traversal              | Neo4j Community                 |
-| RelationalStore    | Metadata persistence + chunk storage        | PostgreSQL + SQLAlchemy         |
-| LangGraph Agent    | Query orchestration state machine           | LangGraph                       |
-| LiteLLM Gateway    | LLM provider fallback routing               | LiteLLM                         |
-| FastAPI            | HTTP API layer                              | FastAPI + Uvicorn               |
-| FlashRank          | Cross-encoder reranking                     | ONNX local model                |
+| Component          | Responsibility                                        | Technology                      |
+|--------------------|-------------------------------------------------------|---------------------------------|
+| DocumentRegistry   | Centralised doc URL + metadata management             | Python dataclass                |
+| PDFParser          | Text extraction from PDFs                             | PyMuPDF                         |
+| LegalChunker       | Multi-format section-boundary splitting               | Regex (Act + Rule patterns)     |
+| MetadataExtractor  | Date, Section X + Rule X reference, amendment extract | Regex                           |
+| Embedder           | Dense vector generation + truncation guard            | nomic-embed-text (Ollama)       |
+| VectorStore        | Semantic similarity search                            | pgvector + HNSW                 |
+| GraphStore         | Section relationship traversal — fresh driver per call| Neo4j Community                 |
+| GraphSeeder        | Post-ingestion REFERENCES + DERIVED_FROM edge seeding | Neo4j Cypher                    |
+| RelationalStore    | Metadata persistence + chunk storage                  | PostgreSQL + SQLAlchemy         |
+| LangGraph Agent    | Query orchestration state machine                     | LangGraph                       |
+| LiteLLM Gateway    | LLM provider fallback routing                         | LiteLLM                         |
+| FastAPI            | HTTP API layer                                        | FastAPI + Uvicorn               |
+| FlashRank          | Cross-encoder reranking (pinned source chunks exempt) | ONNX local model                |
 
 ---
 
@@ -139,16 +146,21 @@ All routing handled by LiteLLM. Model swap = config change only.
 Input:  {"query": "What are builder obligations under Section 18?"}
 
 Step 1  Classify    → query_type=cross_reference (explicit section number detected)
-Step 2  Graph       → traverse Section 18 node, incoming + outgoing REFERENCES edges
+Step 2  Graph       → traverse Section 18 node
+                      REFERENCES outgoing + incoming (depth=2)
+                      DERIVED_FROM outgoing → Act sections this Rule derives from
+                      DERIVED_FROM incoming → Rule sections implementing this Act section
 Step 2b Fallback    → vector retrieval if graph returns 0 results
-Step 3  Rerank      → cross-encoder scores, top 5 ordered
-Step 4  Generate    → LLM produces JSON with answer + citations
-Step 5  Validate    → hallucination check, confidence score
-Step 6  Respond     → CivicSetuResponse with citations + disclaimer
+Step 3  Pin         → exact source section chunks marked is_pinned=True, skip reranker
+Step 4  Rerank      → cross-encoder scores remaining chunks, top 5 total
+Step 5  Generate    → LLM produces JSON with answer + citations
+Step 6  Validate    → hallucination check, confidence score
+Step 7  Respond     → CivicSetuResponse with citations + disclaimer
 
 Output: {
 "answer": "Under Section 18(1)...",
-"citations": [{"section_id": "18", "doc_name": "RERA Act 2016", ...}],
+"citations": [{"section_id": "18", "doc_name": "RERA Act 2016", ...},
+              {"section_id": "18", "doc_name": "Maharashtra Real Estate...", ...}],
 "confidence_score": 0.95,
 "confidence_level": "high",
 "disclaimer": "This is AI-generated information..."
@@ -165,8 +177,8 @@ Output: {
 | 0     | RERA Act 2016, vector RAG, FastAPI             | ✅ Complete     |
 | 1     | Neo4j graph, cross-reference queries           | ✅ Complete     |
 | 2     | MahaRERA Rules 2017, multi-jurisdiction        | ✅ Complete     |
-| 3     | DERIVED_FROM edges, conflict detection         | Next            |
-| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | Planned         |
+| 3     | DERIVED_FROM edges, cross-jurisdiction graph   | ✅ Complete     |
+| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | Next            |
 | 5     | Open-source SaaS, UI, public API               | Planned         |
 
 ---
