@@ -11,47 +11,48 @@
 
 src/civicsetu/
 ├── config/
-│   └── settings.py         Pydantic BaseSettings singleton (lru_cache)
+│   ├── settings.py           Pydantic BaseSettings singleton (lru_cache)
+│   └── document_registry.py  All document URLs + metadata (single source of truth)
 ├── models/
-│   ├── enums.py             StrEnum: Jurisdiction, DocType, QueryType, etc.
-│   └── schemas.py           Pydantic models: LegalChunk, Citation, CivicSetuResponse
+│   ├── enums.py              StrEnum: Jurisdiction, DocType, QueryType, etc.
+│   └── schemas.py            Pydantic models: LegalChunk, Citation, CivicSetuResponse
 ├── ingestion/
-│   ├── downloader.py        httpx PDF downloader with MD5 cache check
-│   ├── parser.py            PyMuPDF text extractor, scanned PDF detection
-│   ├── chunker.py           Section-boundary regex chunker + fallback
+│   ├── downloader.py         httpx PDF downloader with MD5 cache check
+│   ├── parser.py             PyMuPDF text extractor, scanned PDF detection
+│   ├── chunker.py            Section-boundary regex chunker + fallback
 │   ├── metadata_extractor.py Date/reference/amendment regex extraction
-│   ├── embedder.py          nomic-embed-text via Ollama (document + query prefixes)
-│   └── pipeline.py          Orchestrates all ingestion steps end-to-end
+│   ├── embedder.py           nomic-embed-text via Ollama (document + query prefixes)
+│   └── pipeline.py           Orchestrates all ingestion steps end-to-end
 ├── stores/
-│   ├── relational_store.py  Async SQLAlchemy — documents + legal_chunks tables
-│   ├── vector_store.py      pgvector HNSW cosine search
-│   └── graph_store.py       Neo4j Cypher interface (Phase 1)
+│   ├── relational_store.py   Async SQLAlchemy — documents + legal_chunks tables
+│   ├── vector_store.py       pgvector HNSW cosine search
+│   └── graph_store.py        Neo4j Cypher interface (Phase 1)
 ├── retrieval/
-│   ├── vector_retriever.py  Wraps VectorStore for agent use
-│   ├── graph_retriever.py   Cypher query builder (Phase 1)
-│   └── reranker.py          FlashRank cross-encoder wrapper
+│   ├── vector_retriever.py   Wraps VectorStore for agent use
+│   ├── graph_retriever.py    Cypher query builder (Phase 1)
+│   └── reranker.py           FlashRank cross-encoder wrapper
 ├── agent/
-│   ├── state.py             CivicSetuState TypedDict (frozen contract)
-│   ├── nodes.py             Pure functions: classifier, retrieval, reranker,
-│   │                        generator, validator
-│   ├── edges.py             Conditional routing: route_after_classifier,
-│   │                        route_after_validator
-│   └── graph.py             StateGraph assembly + get_compiled_graph()
+│   ├── state.py              CivicSetuState TypedDict (frozen contract)
+│   ├── nodes.py              Pure functions: classifier, retrieval, reranker,
+│   │                         generator, validator
+│   ├── edges.py              Conditional routing: route_after_classifier,
+│   │                         route_after_validator
+│   └── graph.py              StateGraph assembly + get_compiled_graph()
 ├── prompts/
-│   ├── classifier.py        Query type classification + rewriting prompt
-│   ├── generator.py         Cited answer generation prompt
-│   └── validator.py         Hallucination + confidence check prompt
+│   ├── classifier.py         Query type classification + rewriting prompt
+│   ├── generator.py          Cited answer generation prompt
+│   └── validator.py          Hallucination + confidence check prompt
 ├── guardrails/
-│   ├── input_guard.py       PII detection + off-topic filter (Phase 1)
-│   └── output_guard.py      Faithfulness check + disclaimer injection (Phase 1)
+│   ├── input_guard.py        PII detection + off-topic filter (Phase 1)
+│   └── output_guard.py       Faithfulness check + disclaimer injection (Phase 1)
 └── api/
-├── main.py              FastAPI app factory + lifespan (graph pre-compiled)
+├── main.py                   FastAPI app factory + lifespan (graph pre-compiled)
 ├── routes/
-│   ├── health.py        GET /health — DB ping
-│   ├── query.py         POST /api/v1/query — main RAG endpoint
-│   └── ingest.py        POST /api/v1/ingest — Phase 1 admin endpoint
+│   ├── health.py             GET /health — DB ping
+│   ├── query.py              POST /api/v1/query — main RAG endpoint
+│   └── ingest.py             POST /api/v1/ingest — Phase 1 admin endpoint
 └── middleware/
-└── logging.py       Request/response structured logging
+└── logging.py                Request/response structured logging
 
 ```
 
@@ -201,25 +202,35 @@ validator → route_after_validator:
 
 ### Section Boundary Detection
 
-Indian legal acts follow a consistent numbering format:
+Two regex patterns to cover both document formats ingested:
+
+**Act format** (RERA Act 2016):
 
 ```
+^\s*(?P<id>\d+[A-Z]?)\.?\s*(?P<title>[A-Z][^\n—]{3,80})\.?—
 ```
 
-^\s*(?P<id>\d+[A-Z]?)\.\s+(?P<title>[A-Za-z][^—\n]{3,80})\.?—
+Matches: `18. Return of amount and compensation.—`
+
+**Rule format** (MahaRERA Rules 2017):
 
 ```
+\n(?P<id>\d+)\.\s*\n(?P<title>[A-Z][^\n]{3,80})\n
 ```
 
-Matches: `1. Short title.—` / `18A. Special provisions.—` / ` 2. Definitions.—`
+Matches: `\n3.\nInformation to be furnished...\n`
+
+Chunker tries Act pattern first; falls back to Rule pattern; falls back to paragraph
+split if neither matches. Logs `chunking_fallback_used` on paragraph path.
 
 ### Chunk Size Limits
 
 ```
 MIN_CHARS = 100   — discard fragments (headers, page numbers)
-MAX_CHARS = 2000  — split large sections at subsection markers (1), (2), (a), (b)
+MAX_CHARS = 1500  — split large sections at subsection markers (1), (2), (a), (b)
 ```
 
+Reduced from 2000 → 1500 to stay within nomic-embed-text practical token window.
 
 ### Split Priority for Large Sections
 
@@ -252,6 +263,18 @@ Query time:      "search_query: {query}"     → embed_query()
 
 Using wrong prefix at query time causes ~10–15% recall degradation.
 The `embed_document()` / `embed_query()` method split enforces this at the API level.
+
+### Truncation Guard
+
+```python
+MAX_EMBED_CHARS = 6000   # ~1500 tokens for nomic-embed-text
+if len(text) > MAX_EMBED_CHARS:
+    log.warning("embedding_truncated", original_len=len(text), truncated_to=MAX_EMBED_CHARS)
+    text = text[:MAX_EMBED_CHARS]
+```
+
+Prevents silent API errors on oversized chunks. Expected to fire on 0–2 chunks per
+document where subsection splitting fails (complex tables, long definition lists).
 
 ---
 
@@ -316,3 +339,17 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 - Any query with explicit section number (e.g. "Section 18") → cross_reference
 - cross_reference + penalty_lookup + temporal → graph_retrieval node
 - fact_lookup + conflict_detection → vector_retrieval node
+
+## 8. Neo4j Graph — Phase 2 State
+
+**Nodes seeded:** 2 Documents, 438 Section nodes
+**Edges seeded:** 438 HAS_SECTION, 124 REFERENCES, 0 DERIVED_FROM (Phase 3)
+
+**Documents in graph:**
+- RERA Act 2016 (CENTRAL) — 224 sections, 63 REFERENCES edges
+- Maharashtra Real Estate Rules 2017 (MAHARASHTRA) — 214 sections, 61 REFERENCES edges
+
+**Known issue (Phase 3 backlog):**
+Citation deduplication keys on `section_id` only, not `(section_id, doc_name)`.
+Cross-doc queries may show duplicate section IDs from different documents.
+Fix: update generator citation dedup to composite key.
