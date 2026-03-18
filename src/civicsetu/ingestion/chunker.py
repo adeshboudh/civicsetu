@@ -39,7 +39,7 @@ class LegalChunker:
       ORDERS     → numbered paragraphs "1.", "2."
     """
 
-    MAX_CHARS = 2000      # hard cap per chunk — forces subsection split
+    MAX_CHARS = 1500      # hard cap per chunk — forces subsection split
     MIN_CHARS = 100       # discard chunks below this (headers, page numbers)
 
     # ── Section boundary patterns per doc type ────────────────────────────────
@@ -53,14 +53,19 @@ class LegalChunker:
             ),
         ],
         DocType.RULES: [
-            # Same numbering format for Rules
+            # Format 1: "\n2. \nDefinition: -" — number, dot, space/newline, title on next line
+            # Matches MahaRERA Rules 2017 actual PDF format
             re.compile(
-                r'^\s*(?P<id>\d+[A-Z]?)\.\s+(?P<title>[A-Za-z][^—\n]{3,80})\.?—',
+                '\n(?P<id>\\d+[A-Z]?)\\.\\s*\n\\s*(?P<title>[A-Za-z][^\\n]{3,80})',
+            ),
+            # Format 2: "3. Application for registration.—" same-line dash format
+            re.compile(
+                '^\\s*(?P<id>\\d+[A-Z]?)\\.\\s+(?P<title>[A-Za-z][^—\\n]{3,80})\\.?—',
                 re.MULTILINE,
             ),
-            # Also catch "Rule 12." style if present
+            # Format 3: "Rule 3 - Application" explicit Rule prefix
             re.compile(
-                r'^Rule\s+(?P<id>\d+[A-Z]?)\s*[\.\-–]\s*(?P<title>[A-Z][^\n]{3,80})',
+                '^Rule\\s+(?P<id>\\d+[A-Z]?)\\s*[.\\-\u2013]\\s*(?P<title>[A-Z][^\\n]{3,80})',
                 re.MULTILINE,
             ),
         ],
@@ -211,7 +216,7 @@ class LegalChunker:
         Splits on subsection markers like (1), (2), (a), (b) first.
         Falls back to sentence boundary split if no markers found.
         """
-        sub_pattern = re.compile(r'\n\s*\((?:\d+|[a-z])\)\s+')
+        sub_pattern = re.compile('\\n\\s*\\((?:\\d+|[a-z]{1,3})\\)\\s+')
         parts = sub_pattern.split(section.text)
 
         if len(parts) <= 1:
