@@ -197,24 +197,34 @@ def reranker_node(state: CivicSetuState) -> dict:
 
     log.info("reranker_node", unique_chunks=len(unique_chunks))
 
+    # Separate pinned (source sections) from rankable
+    pinned = [c for c in unique_chunks if c.is_pinned][:2]
+    rankable = [c for c in unique_chunks if not c.is_pinned]
+
     try:
         ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=".cache/flashrank")
-        passages = [{"id": i, "text": c.chunk.text} for i, c in enumerate(unique_chunks)]
+        passages = [{"id": i, "text": c.chunk.text} for i, c in enumerate(rankable)]
         request = RerankRequest(query=query, passages=passages)
         results = ranker.rerank(request)
 
         # Map scores back to chunks
-        reranked = []
-        for r in results[:5]:
-            chunk = unique_chunks[r["id"]]
+        id_to_chunk = {i: c for i, c in enumerate(rankable)}
+        reranked_rankable = []
+        for r in results:
+            chunk = id_to_chunk[r["id"]]
             chunk.rerank_score = round(float(r["score"]), 4)
-            reranked.append(chunk)
+            reranked_rankable.append(chunk)
+
+        slots_for_ranked = max(0, 5 - len(pinned))
+        reranked = pinned + reranked_rankable[:slots_for_ranked]
+
 
     except Exception as e:
         log.warning("reranker_failed", error=str(e), fallback="vector_order")
-        reranked = unique_chunks[:5]
+        slots_for_ranked = max(0, 5 - len(pinned))
+        reranked = pinned + rankable[:slots_for_ranked]
 
-    log.info("reranker_complete", reranked=len(reranked))
+    log.info("reranker_complete", reranked=len(reranked), pinned=len(pinned))
     return {"reranked_chunks": reranked}
 
 
@@ -269,17 +279,21 @@ def generator_node(state: CivicSetuState) -> dict:
         conflict_warnings = result.get("conflict_warnings", [])
 
         # Build citations from chunks referenced in answer
+        seen: set[tuple[str, str]] = set()
         citations = []
         for rc in chunks:
             c = rc.chunk
-            citations.append(Citation(
-                section_id=c.section_id,
-                doc_name=c.doc_name,
-                jurisdiction=c.jurisdiction,
-                effective_date=c.effective_date,
-                source_url=c.source_url,
-                chunk_id=c.chunk_id,
-            ))
+            key = (c.section_id, c.doc_name)
+            if key not in seen:
+                seen.add(key)
+                citations.append(Citation(
+                    section_id=c.section_id,
+                    doc_name=c.doc_name,
+                    jurisdiction=c.jurisdiction,
+                    effective_date=c.effective_date,
+                    source_url=c.source_url,
+                    chunk_id=c.chunk_id,
+                ))
 
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         log.warning("generator_parse_failed", error=str(e))

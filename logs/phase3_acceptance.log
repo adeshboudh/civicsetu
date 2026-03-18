@@ -1,0 +1,153 @@
+2026-03-19 02:14:44 [info     ] classifier_node                query='What does Rule 3 of Maharashtra Rules say about promoter registration?'
+2026-03-19 02:14:46 [info     ] classified                     query_type=cross_reference rewritten='What are the provisions of Rule 3 of the Maharashtra Real Estate (Regulation and'
+2026-03-19 02:14:47 [info     ] graph_retrieval_node           query='What are the provisions of Rule 3 of the Maharashtra Real Estate (Regulation and'
+2026-03-19 02:14:47 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['CENTRAL', 'MAHARASHTRA'] section_id=3
+2026-03-19 02:14:49 [info     ] graph_retriever_complete       chunks_hydrated=48 jurisdictions_searched=['CENTRAL', 'MAHARASHTRA'] section_id=3
+2026-03-19 02:14:49 [info     ] graph_retrieval_complete       results=48
+2026-03-19 02:14:49 [info     ] reranker_node                  unique_chunks=27
+2026-03-19 02:14:56 [info     ] reranker_complete              pinned=2 reranked=5
+2026-03-19 02:14:56 [info     ] generator_node                 context_chunks=5 query='What does Rule 3 of Maharashtra Rules say about promoter registration?'
+[92m02:14:56 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:14:58 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+[92m02:14:58 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:14:59 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:14:59 [info     ] validator_node                 confidence=1.0 hallucinated=False
+Q1
+  Cites : [('3', 'RERA Act 2016'), ('3', 'Maharashtra Real Est'), ('8(12)', 'Maharashtra Real Est'), ('3(2)', 'Maharashtra Real Est'), ('6', 'Maharashtra Real Est')]
+  Docs  : ['RERA Act 2016', 'Maharashtra Real Estate (Regul']
+  Dedup : True
+
+2026-03-19 02:14:59 [info     ] classifier_node                query='What are the obligations under Section 4 of RERA Act?'
+[92m02:14:59 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:00 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:00 [info     ] classified                     query_type=cross_reference rewritten='What are the specific duties, obligations, and disclosure requirements imposed o'
+2026-03-19 02:15:00 [info     ] graph_retrieval_node           query='What are the specific duties, obligations, and disclosure requirements imposed o'
+2026-03-19 02:15:00 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['CENTRAL', 'MAHARASHTRA'] section_id=4
+2026-03-19 02:15:01 [info     ] graph_retriever_complete       chunks_hydrated=47 jurisdictions_searched=['CENTRAL', 'MAHARASHTRA'] section_id=4
+2026-03-19 02:15:01 [info     ] graph_retrieval_complete       results=47
+2026-03-19 02:15:01 [info     ] reranker_node                  unique_chunks=38
+2026-03-19 02:15:13 [info     ] reranker_complete              pinned=1 reranked=5
+2026-03-19 02:15:13 [info     ] generator_node                 context_chunks=5 query='What are the obligations under Section 4 of RERA Act?'
+[92m02:15:13 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:14 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+[92m02:15:14 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:16 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:16 [info     ] validator_node                 confidence=1.0 hallucinated=False
+Q2
+  Cites : [('4', 'RERA Act 2016'), ('3(2)', 'Maharashtra Real Est'), ('11(15)', 'Maharashtra Real Est'), ('4', 'Maharashtra Real Est'), ('5(11)', 'Maharashtra Real Est')]
+  Docs  : ['RERA Act 2016', 'Maharashtra Real Estate (Regul']
+  Dedup : True
+
+2026-03-19 02:15:16 [info     ] classifier_node                query='What does Section 18 of RERA say about refund timelines?'
+[92m02:15:16 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:17 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:17 [info     ] classified                     query_type=cross_reference rewritten='What are the provisions under Section 18 of the Real Estate (Regulation and Deve'
+2026-03-19 02:15:17 [info     ] graph_retrieval_node           query='What are the provisions under Section 18 of the Real Estate (Regulation and Deve'
+2026-03-19 02:15:17 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['CENTRAL', 'MAHARASHTRA'] section_id=18
+2026-03-19 02:15:19 [info     ] graph_retriever_complete       chunks_hydrated=5 jurisdictions_searched=['CENTRAL', 'MAHARASHTRA'] section_id=18
+2026-03-19 02:15:19 [info     ] graph_retrieval_complete       results=5
+2026-03-19 02:15:19 [info     ] reranker_node                  unique_chunks=5
+2026-03-19 02:15:20 [info     ] reranker_complete              pinned=2 reranked=5
+2026-03-19 02:15:20 [info     ] generator_node                 context_chunks=5 query='What does Section 18 of RERA say about refund timelines?'
+[92m02:15:20 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:22 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+[92m02:15:22 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:23 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:23 [info     ] validator_node                 confidence=0.5 hallucinated=True
+2026-03-19 02:15:23 [info     ] classifier_node                query='What does Section 18 of RERA say about refund timelines?'
+[92m02:15:23 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:25 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:25 [info     ] classified                     query_type=cross_reference rewritten='What are the provisions under Section 18 of the Real Estate (Regulation and Deve'
+2026-03-19 02:15:25 [info     ] graph_retrieval_node           query='What are the provisions under Section 18 of the Real Estate (Regulation and Deve'
+2026-03-19 02:15:25 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['CENTRAL', 'MAHARASHTRA'] section_id=18
+2026-03-19 02:15:25 [info     ] graph_retriever_complete       chunks_hydrated=5 jurisdictions_searched=['CENTRAL', 'MAHARASHTRA'] section_id=18
+2026-03-19 02:15:25 [info     ] graph_retrieval_complete       results=5
+2026-03-19 02:15:25 [info     ] reranker_node                  unique_chunks=5
+2026-03-19 02:15:27 [info     ] reranker_complete              pinned=2 reranked=5
+2026-03-19 02:15:27 [info     ] generator_node                 context_chunks=5 query='What does Section 18 of RERA say about refund timelines?'
+[92m02:15:27 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:29 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+[92m02:15:29 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:30 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:30 [info     ] validator_node                 confidence=1.0 hallucinated=False
+Q3
+  Cites : [('18', 'RERA Act 2016'), ('18', 'Maharashtra Real Est'), ('19', 'Maharashtra Real Est'), ('71', 'RERA Act 2016'), ('19', 'RERA Act 2016')]
+  Docs  : ['RERA Act 2016', 'Maharashtra Real Estate (Regul']
+  Dedup : True
+
+2026-03-19 02:15:30 [info     ] classifier_node                query='What are disclosure requirements for promoters under RERA and Maharashtra Rules?'
+[92m02:15:30 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:31 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:31 [info     ] classified                     query_type=fact_lookup rewritten='What are the mandatory disclosure requirements for real estate promoters as pres'
+2026-03-19 02:15:31 [info     ] vector_retrieval_node          query='What are the mandatory disclosure requirements for real estate promoters as pres' top_k=5
+2026-03-19 02:15:35 [info     ] vector_search_complete         jurisdiction=None results=5 top_k=5
+2026-03-19 02:15:35 [info     ] vector_retrieval_complete      results=5
+2026-03-19 02:15:35 [info     ] reranker_node                  unique_chunks=5
+2026-03-19 02:15:38 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-19 02:15:38 [info     ] generator_node                 context_chunks=5 query='What are disclosure requirements for promoters under RERA and Maharashtra Rules?'
+[92m02:15:38 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:40 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+[92m02:15:40 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m02:15:42 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-19 02:15:42 [info     ] validator_node                 confidence=1.0 hallucinated=False
+Q4
+  Cites : [('3(2)', 'Maharashtra Real Est'), ('3', 'RERA Act 2016'), ('3(5)', 'Maharashtra Real Est'), ('3', 'Maharashtra Real Est'), ('3(4)', 'Maharashtra Real Est')]
+  Docs  : ['RERA Act 2016', 'Maharashtra Real Estate (Regul']
+  Dedup : True
+

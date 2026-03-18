@@ -132,6 +132,22 @@ _KNOWN_CROSS_ACTS = re.compile(
 
 _REF_BARE = re.compile('[Ss]ection\\s+(\\d+[A-Z]?)', re.IGNORECASE)
 
+_MAHARERA_MAX_RULE = 50
+
+_REF_RULE_BARE = re.compile(r'\bRule\s+(\d+[A-Z]?)\b', re.IGNORECASE)
+
+_REF_RULE_SINGULAR = re.compile(
+    r'(?:under|pursuant\s+to|referred\s+to\s+in|as\s+per|'
+    r'in\s+accordance\s+with|subject\s+to|of|in|for)\s+'
+    r'Rule\s+(\d+[A-Z]?)',
+    re.IGNORECASE,
+)
+
+_REF_RULE_PLURAL_SPAN = re.compile(
+    r'Rules?\s+((?:\d+[A-Z]?(?:\s*,\s*|\s+and\s+(?:Rule\s+)?)?)+\d+[A-Z]?)',
+    re.IGNORECASE,
+)
+
 # ── Extractor ─────────────────────────────────────────────────────────────────
 
 class MetadataExtractor:
@@ -185,6 +201,32 @@ class MetadataExtractor:
             for sec in _NUM_IN_SPAN.findall(m.group(1)):
                 if _is_rera_section(sec):
                     refs.add(sec)
+
+        return list(refs)
+
+    @staticmethod
+    def extract_rule_references(text: str) -> list[str]:
+        """
+        Extract MahaRERA Rule IDs referenced within a chunk's text.
+        Mirrors extract_section_references but for Rule format.
+        Returns rule numbers as strings (e.g. ["3", "12", "7A"]).
+        """
+        refs: set[str] = set()
+
+        for m in _REF_RULE_BARE.finditer(text):
+            rule = m.group(1)
+            if _is_rule_number(rule):
+                refs.add(rule)
+
+        for m in _REF_RULE_SINGULAR.finditer(text):
+            rule = m.group(1)
+            if _is_rule_number(rule):
+                refs.add(rule)
+
+        for m in _REF_RULE_PLURAL_SPAN.finditer(text):
+            for rule in _NUM_IN_SPAN.findall(m.group(1)):
+                if _is_rule_number(rule):
+                    refs.add(rule)
 
         return list(refs)
 
@@ -266,7 +308,7 @@ class MetadataExtractor:
                 chunk["effective_date"] = MetadataExtractor.extract_effective_date(text)
 
             chunk["_section_references"] = MetadataExtractor.extract_section_references(text)
-            chunk["_amendment_signals"] = MetadataExtractor.extract_amendment_signals(text)
+            chunk["_rule_references"] = MetadataExtractor.extract_rule_references(text)
 
             if chunk.get("jurisdiction") == Jurisdiction.CENTRAL:
                 inferred = MetadataExtractor.infer_jurisdiction(text, filename)
@@ -313,3 +355,8 @@ def _is_rera_section(sec: str) -> bool:
     """Return True only if sec is a valid RERA section number (1–92)."""
     digits = re.sub('[A-Z]', '', sec, flags=re.IGNORECASE)
     return digits.isdigit() and 1 <= int(digits) <= _RERA_MAX_SECTION
+
+def _is_rule_number(rule: str) -> bool:
+    """Return True only if rule is a valid MahaRERA rule number (1–50)."""
+    digits = re.sub('[A-Z]', '', rule, flags=re.IGNORECASE)
+    return digits.isdigit() and 1 <= int(digits) <= _MAHARERA_MAX_RULE

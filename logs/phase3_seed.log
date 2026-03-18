@@ -1,0 +1,38 @@
+2026-03-19 01:35:52 [info     ] phase3_seed_start
+2026-03-19 01:35:52 [info     ] neo4j_constraints_created
+2026-03-19 01:35:53 [info     ] graph_seeder_docs_loaded       count=2
+2026-03-19 01:35:53 [info     ] neo4j_document_upserted        doc_id=515bb89f-7392-4684-abe3-25f195bcdb04 doc_name='RERA Act 2016'
+2026-03-19 01:35:53 [info     ] graph_seeder_chunks_loaded     count=224 doc_name='RERA Act 2016'
+2026-03-19 01:35:56 [info     ] neo4j_document_upserted        doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
+2026-03-19 01:35:56 [info     ] graph_seeder_chunks_loaded     count=214 doc_name='Maharashtra Real Estate (Regulation and Development) Rules 2017'
+2026-03-19 01:36:00 [info     ] neo4j_document_derived_from_created derived_doc_id=1ff86f63-fed8-4007-b964-f3c17f5cc4c8 parent_doc_id=515bb89f-7392-4684-abe3-25f195bcdb04
+2026-03-19 01:36:00 [info     ] derived_from_doc_edge_created  derived=1ff86f63-fed8-4007-b964-f3c17f5cc4c8 parent=515bb89f-7392-4684-abe3-25f195bcdb04
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=4 rule_section=3
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=4 rule_section=4
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=4 rule_section=5
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=5 rule_section=6
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=6 rule_section=7
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=7 rule_section=8
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=11 rule_section=10
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=9 rule_section=11
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=9 rule_section=12
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=10 rule_section=14
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=9 rule_section=15
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=10 rule_section=17
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=19 rule_section=18
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=18 rule_section=19
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=11 rule_section=20
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=11 rule_section=21
+2026-03-19 01:36:00 [info     ] derived_from_section_edge_created act_section=31 rule_section=31
+2026-03-19 01:36:00 [info     ] derived_from_seeding_complete  section_edges=17
+2026-03-19 01:36:00 [info     ] derived_from_total_section_edges count=17
+2026-03-19 01:36:00 [info     ] graph_seeding_complete         docs=2 graph_stats={'docs': 2, 'sections': 438, 'refs': 171, 'has_sec': 438, 'derived_from': 18} ref_edges=171 sections=438
+2026-03-19 01:36:00 [info     ] phase3_seed_complete           stats={'docs': 2, 'sections': 438, 'refs': 171, 'has_sec': 438, 'derived_from': 18}
+
+============================================================
+Phase 3 graph seed complete
+  Docs          : 2
+  Sections      : 438
+  REFERENCES    : 171
+  DERIVED_FROM  : 18
+============================================================

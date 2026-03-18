@@ -19,6 +19,7 @@ from civicsetu.config.document_registry import DOCUMENT_REGISTRY
 from civicsetu.ingestion.pipeline import IngestionPipeline
 from civicsetu.ingestion.graph_seeder import GraphSeeder
 
+log = structlog.get_logger(__name__)
 
 def main() -> None:
     spec = DOCUMENT_REGISTRY["rera_act_2016"]
