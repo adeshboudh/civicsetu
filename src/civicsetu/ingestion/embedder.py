@@ -35,6 +35,12 @@ class Embedder:
         if not text or not text.strip():
             raise ValueError("Cannot embed empty text")
 
+        MAX_EMBED_CHARS = 6000
+
+        if len(text) > MAX_EMBED_CHARS:
+            log.warning("embedding_truncated", original_len=len(text), truncated_to=MAX_EMBED_CHARS)
+            text = text[:MAX_EMBED_CHARS]
+            
         response = self.client.embeddings(
             model=self.model,
             prompt=text,
