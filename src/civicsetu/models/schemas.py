@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, computed_field
@@ -66,6 +67,8 @@ class RetrievedChunk(BaseModel):
     vector_score: float | None = None     # cosine similarity from pgvector
     rerank_score: float | None = None     # cross-encoder score from FlashRank
     retrieval_source: str = "vector"         # "vector" | "graph" | "metadata"
+    graph_path: Optional[str] = None
+    is_pinned: bool = False
 
 
 # ── Response Schemas ───────────────────────────────────────────────────────────

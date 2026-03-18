@@ -22,17 +22,25 @@ services:
 
   # ── Neo4j Community (Phase 1 — INACTIVE) ────────────────────────────────────
   # Uncomment when starting Phase 1
-  # neo4j:
-  #   image: neo4j:5-community
-  #   container_name: civicsetu_neo4j
-  #   restart: unless-stopped
-  #   environment:
-  #     NEO4J_AUTH: neo4j/civicsetu_dev
-  #   ports:
-  #     - "7474:7474"
-  #     - "7687:7687"
-  #   volumes:
-  #     - neo4j_data:/data
+  neo4j:
+    image: neo4j:5-community
+    container_name: civicsetu_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/civicsetu_dev
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+    ports:
+      - "7474:7474"    # Browser UI
+      - "7687:7687"    # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "civicsetu_dev", "RETURN 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
 
   # ── Arize Phoenix (Phase 0 — INACTIVE, enable when tracing needed) ───────────
   # phoenix:
@@ -46,5 +54,5 @@ services:
 
 volumes:
   postgres_data:
-  # neo4j_data:
+  neo4j_data:
   # phoenix_data:
