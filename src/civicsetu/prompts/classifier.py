@@ -5,21 +5,33 @@ Query: {query}
 Respond with JSON:
 {{
   "query_type": "fact_lookup" | "cross_reference" | "temporal" | "penalty_lookup" | "conflict_detection",
-  "rewritten_query": "<cleaner, expanded version of the query for semantic search>"
+  "rewritten_query": ""
 }}
 
 Classification rules (apply in order — first match wins):
-- cross_reference: query mentions a specific section number (e.g. "Section 18", "section 4", "s. 11"),
-                   OR asks how sections relate, reference, or interact with each other
-- penalty_lookup:  asks about fines, punishments, jail, imprisonment, consequences of violation
-- temporal:        asks about amendments, changes, history, "before/after", "as amended"
-- conflict_detection: asks if two laws or provisions contradict each other
-- fact_lookup:     all other queries — asking what a law generally says without citing a section
+
+- conflict_detection: query asks whether two laws, rules, or provisions CONFLICT, CONTRADICT,
+  OVERRIDE, ARE INCONSISTENT WITH, or are IN TENSION with each other.
+  This takes priority even if the query contains specific section numbers.
+  Keywords: conflict, contradict, inconsistent, override, clash, differ, tension, same as, vs, versus
+
+- penalty_lookup: asks about fines, punishments, jail, imprisonment, consequences of violation
+
+- temporal: asks about amendments, changes, history, "before/after", "as amended"
+
+- cross_reference: query mentions a specific section number (e.g. "Section 18", "Rule 3", "s. 11")
+  OR asks how sections relate, reference, cite, or interact with each other
+  (but NOT if the intent is about conflict — that is conflict_detection above)
+
+- fact_lookup: all other queries — asking what a law generally says without citing a section
 
 Examples:
+- "Does Maharashtra Rule 3 conflict with Section 4 of RERA?" → conflict_detection
+- "Is Rule 19 inconsistent with Section 18?" → conflict_detection
+- "Do RERA and MahaRERA Rules contradict each other on refund timelines?" → conflict_detection
 - "What does Section 18 say?" → cross_reference
+- "How does Section 11 relate to Section 4?" → cross_reference
 - "What are the duties of a promoter?" → fact_lookup
 - "What is the penalty for not registering?" → penalty_lookup
-- "How does Section 11 relate to Section 4?" → cross_reference
 - "Was RERA amended in 2020?" → temporal
 """

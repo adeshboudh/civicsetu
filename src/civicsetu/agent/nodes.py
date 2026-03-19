@@ -345,3 +345,58 @@ def validator_node(state: CivicSetuState) -> dict:
         "hallucination_flag": hallucinated,
         "confidence_score": float(updated_score),
     }
+
+def hybrid_retrieval_node(state: CivicSetuState) -> dict:
+    """
+    Used for conflict_detection queries.
+    Runs vector + graph retrieval in parallel, merges results.
+    Deduplication happens downstream in reranker_node.
+    """
+    from civicsetu.retrieval.graph_retriever import GraphRetriever
+
+    query = state.get("rewritten_query") or state["query"]
+    top_k = state.get("top_k", 5)
+    jurisdiction = state.get("jurisdiction_filter")
+
+    log.info("hybrid_retrieval_node", query=query[:80])
+
+    query_embedding = _embedder.embed_query(query)
+
+    async def _retrieve():
+        async with AsyncSessionLocal() as session:
+            vector_task = VectorStore.similarity_search(
+                session=session,
+                query_embedding=query_embedding,
+                top_k=top_k,
+                jurisdiction=jurisdiction,
+                active_only=True,
+            )
+            graph_task = GraphRetriever.retrieve(
+                query=query,
+                jurisdiction=jurisdiction,
+                depth=2,
+            )
+            vector_chunks, graph_chunks = await asyncio.gather(
+                vector_task, graph_task, return_exceptions=True
+            )
+
+        v_chunks = vector_chunks if not isinstance(vector_chunks, Exception) else []
+        g_chunks = graph_chunks if not isinstance(graph_chunks, Exception) else []
+
+        if isinstance(vector_chunks, Exception):
+            log.warning("hybrid_vector_failed", error=str(vector_chunks))
+        if isinstance(graph_chunks, Exception):
+            log.warning("hybrid_graph_failed", error=str(graph_chunks))
+
+        return v_chunks, g_chunks
+
+    v_chunks, g_chunks = asyncio.run(_retrieve())
+
+    log.info(
+        "hybrid_retrieval_complete",
+        vector_chunks=len(v_chunks),
+        graph_chunks=len(g_chunks),
+        total=len(v_chunks) + len(g_chunks),
+    )
+    # Return both — reranker deduplicates by chunk_id
+    return {"retrieved_chunks": v_chunks + g_chunks}

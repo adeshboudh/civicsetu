@@ -18,7 +18,10 @@ def route_after_classifier(state: CivicSetuState) -> str:
         QueryType.PENALTY_LOOKUP,
     ):
         return "graph_retrieval"
-
+    
+    if query_type == QueryType.CONFLICT_DETECTION:
+        return "hybrid_retrieval"
+    
     return "vector_retrieval"
 
 

@@ -11,6 +11,7 @@ from civicsetu.agent.nodes import (
     validator_node,
     vector_retrieval_node,
     graph_retrieval_node,
+    hybrid_retrieval_node,
 )
 from civicsetu.agent.state import CivicSetuState
 
@@ -39,6 +40,7 @@ def build_graph() -> StateGraph:
     graph.add_node("generator",         generator_node)
     graph.add_node("validator",         validator_node)
     graph.add_node("retry",             _retry_node)
+    graph.add_node("hybrid_retrieval",  hybrid_retrieval_node)
 
     # ── Entry point ────────────────────────────────────────────────────────────
     graph.set_entry_point("classifier")
@@ -50,6 +52,7 @@ def build_graph() -> StateGraph:
         {
             "vector_retrieval": "vector_retrieval",
             "graph_retrieval":  "graph_retrieval",
+            "hybrid_retrieval": "hybrid_retrieval",
         },
     )
     graph.add_edge("vector_retrieval", "reranker")
@@ -62,6 +65,7 @@ def build_graph() -> StateGraph:
         {"retry": "retry", "end": END},
     )
     graph.add_edge("retry", "classifier")
+    graph.add_edge("hybrid_retrieval", "reranker")
 
     return graph
 
