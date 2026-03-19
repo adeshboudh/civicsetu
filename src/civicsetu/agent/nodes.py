@@ -233,7 +233,9 @@ def reranker_node(state: CivicSetuState) -> dict:
 def generator_node(state: CivicSetuState) -> dict:
     """
     Generates a cited answer from reranked chunks.
-    Returns: raw_response, citations, confidence_score, amendment_notice
+    Citations are anchored to cited_chunks indices returned by the LLM —
+    only sections the answer actually references are included.
+    Returns: raw_response, citations, confidence_score, amendment_notice, conflict_warnings
     """
     query = state["query"]
     chunks: list[RetrievedChunk] = state.get("reranked_chunks", [])
@@ -247,7 +249,7 @@ def generator_node(state: CivicSetuState) -> dict:
             "amendment_notice": None,
         }
 
-    # Build context block
+    # Build numbered context block — [1], [2], ... so LLM can reference by index
     context_parts = []
     for i, rc in enumerate(chunks, 1):
         c = rc.chunk
@@ -278,10 +280,35 @@ def generator_node(state: CivicSetuState) -> dict:
         amendment_notice = result.get("amendment_notice")
         conflict_warnings = result.get("conflict_warnings", [])
 
-        # Build citations from chunks referenced in answer
+        # ── Citation anchoring ────────────────────────────────────────────────
+        # Parse cited_chunks indices returned by LLM (1-based)
+        raw_indices: list = result.get("cited_chunks", [])
+
+        cited_chunks: list[RetrievedChunk] = []
+        if raw_indices and isinstance(raw_indices, list):
+            for idx in raw_indices:
+                try:
+                    i = int(idx)
+                    if 1 <= i <= len(chunks):
+                        cited_chunks.append(chunks[i - 1])
+                except (ValueError, TypeError):
+                    continue
+
+        # Fallback: if LLM returned no valid indices, cite all chunks
+        # Prevents empty citations on malformed LLM output
+        if not cited_chunks:
+            log.warning(
+                "generator_cited_chunks_empty",
+                raw_indices=raw_indices,
+                fallback="all_chunks",
+            )
+            cited_chunks = chunks
+
+        # Deduplicate by (section_id, doc_name) — same section can appear
+        # multiple times from different retrieval paths
         seen: set[tuple[str, str]] = set()
         citations = []
-        for rc in chunks:
+        for rc in cited_chunks:
             c = rc.chunk
             key = (c.section_id, c.doc_name)
             if key not in seen:
@@ -294,6 +321,13 @@ def generator_node(state: CivicSetuState) -> dict:
                     source_url=c.source_url,
                     chunk_id=c.chunk_id,
                 ))
+
+        log.info(
+            "generator_citations_anchored",
+            total_context=len(chunks),
+            cited=len(cited_chunks),
+            unique_citations=len(citations),
+        )
 
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         log.warning("generator_parse_failed", error=str(e))
@@ -310,6 +344,7 @@ def generator_node(state: CivicSetuState) -> dict:
         "conflict_warnings": conflict_warnings,
         "amendment_notice": amendment_notice,
     }
+
 
 
 # ── Node 5: Validator ──────────────────────────────────────────────────────────
