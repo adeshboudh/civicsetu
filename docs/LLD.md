@@ -1,6 +1,6 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 0.4.0 — Phase 4 Complete
+**Version:** 0.5.0 — Phase 6 Complete (4-State Ingestion)
 **Last Updated:** March 2026
 
 ---
@@ -8,7 +8,6 @@
 ## 1. Module Map
 
 ```
-
 src/civicsetu/
 ├── config/
 │   ├── settings.py           Pydantic BaseSettings singleton (lru_cache)
@@ -19,9 +18,9 @@ src/civicsetu/
 ├── ingestion/
 │   ├── downloader.py         httpx PDF downloader with MD5 cache check
 │   ├── parser.py             PyMuPDF text extractor — max_pages cap, scanned PDF detection
-│   ├── chunker.py            Section-boundary regex chunker — 5 format patterns + fallback
+│   ├── chunker.py            Section-boundary regex chunker — 6 format patterns + fallback
 │   ├── metadata_extractor.py Date/Section/Rule reference/amendment regex extraction
-│   ├── embedder.py           nomic-embed-text via Ollama (document + query prefixes)
+│   ├── embedder.py           nomic-embed-text via Ollama — truncate at 4000 chars pre-prefix
 │   ├── pipeline.py           Orchestrates all ingestion steps end-to-end
 │   └── graph_seeder.py       Post-ingestion REFERENCES + DERIVED_FROM edge seeding
 ├── stores/
@@ -54,7 +53,6 @@ src/civicsetu/
     │   └── ingest.py         POST /api/v1/ingest — admin endpoint
     └── middleware/
         └── logging.py        Request/response structured logging
-
 ```
 
 ---
@@ -68,7 +66,7 @@ documents (
     doc_id          UUID PRIMARY KEY,
     doc_name        TEXT,
     jurisdiction    TEXT,   -- Jurisdiction enum value
-    doc_type        TEXT,   -- DocType enum value  (stored uppercase: ACT, RULES)
+    doc_type        TEXT,   -- DocType enum value  (stored uppercase: ACT, RULES, CIRCULAR)
     source_url      TEXT,
     effective_date  DATE,
     gazette_number  TEXT,
@@ -96,7 +94,6 @@ legal_chunks (
 )
 ```
 
-
 ### pgvector Index
 
 ```sql
@@ -109,7 +106,7 @@ CREATE INDEX legal_chunks_embedding_idx
 `m=16` — 16 connections per node. `ef_construction=64` — 64 candidates during index build.
 Tuned for recall/speed balance at <10K vectors. Revisit at 100K+.
 
-### Neo4j Graph Schema (Phase 1)
+### Neo4j Graph Schema
 
 ```
 Nodes:
@@ -122,21 +119,21 @@ Edges:
   (:Section) -[:DERIVED_FROM]->(:Section)     -- State Rule N → RERA Act Sec M
   (:Document)-[:DERIVED_FROM]->(:Document)    -- State Rules → RERA Act 2016
 
-Planned (Phase 5+):
+Planned (Phase 7+):
   (:Section) -[:SUPERSEDES]->(:Section)
   (:Section) -[:AMENDED_BY]->(:Amendment)
   (:Section) -[:CONFLICTS_WITH]->(:Section)
 ```
 
-**Live graph stats (Phase 3):**
+**Live graph stats (Phase 6):**
 
 | Metric       | Count |
 |--------------|-------|
-| Documents    | 7     |
-| Sections     | 1184  |
-| HAS_SECTION  | 905   |
-| REFERENCES   | 665   |
-| DERIVED_FROM | 51    |
+| Documents    | 9     |
+| Sections     | 2090  |
+| HAS_SECTION  | 1297  |
+| REFERENCES   | 933   |
+| DERIVED_FROM | 91    |
 
 ---
 
@@ -157,7 +154,7 @@ class DocumentSpec:
     max_pages: int | None = None  # None = all pages; cap excludes forms/schedules appendices
 ```
 
-### Ingested Documents (Phase 4)
+### Ingested Documents (Phase 6)
 
 | Key | Document | Jurisdiction | DocType | Chunks | max_pages |
 |---|---|---|---|---|---|
@@ -165,9 +162,13 @@ class DocumentSpec:
 | `mahrera_rules_2017` | MahaRERA Rules 2017 | MAHARASHTRA | RULES | ~214 | None |
 | `up_rera_rules_2016` | UP RERA Rules 2016 | UTTAR_PRADESH | RULES | 170 | 24 |
 | `up_rera_general_regulations_2019` | UP RERA General Regulations 2019 | UTTAR_PRADESH | CIRCULAR | 85 | None |
+| `karnataka_rera_rules_2017` | Karnataka RERA Rules 2017 | KARNATAKA | RULES | 235 | 37 |
+| `tn_rera_rules_2017` | Tamil Nadu RERA Rules 2017 | TAMIL_NADU | RULES | 157 | 15 |
 
-> `up_rera_rules_2016` uses `max_pages=24` — pages 1–24 are rule text; pages 25–52 are
-> prescribed forms/schedules that pollute section IDs if ingested.
+**PDF source notes:**
+- Karnataka official PDF (`rera.karnataka.gov.in`) is fully scanned (19MB image) — NAREDCO mirror used
+- TN PDF bundles rules + forms (101 pages); `max_pages=15` excludes Forms A–O
+- UP Rules PDF bundles rules + forms (52 pages); `max_pages=24` excludes prescribed forms
 
 ---
 
@@ -236,7 +237,7 @@ class RetrievedChunk(BaseModel):
 | cross_reference                       | graph_retrieval (→ vector fallback)      |
 | penalty_lookup                        | graph_retrieval (→ vector fallback)      |
 | temporal                              | graph_retrieval (→ vector fallback)      |
-| conflict_detection                    | hybrid_retrieval (Phase 5)               |
+| conflict_detection                    | hybrid_retrieval (Phase 7)               |
 
 ```
 validator → route_after_validator:
@@ -251,17 +252,19 @@ validator → route_after_validator:
 
 ### Section Boundary Detection
 
-Five regex patterns across DocType.RULES, tried in order (first match wins per line):
+Six regex patterns across `DocType.RULES`, tried in order (first match wins per line):
 
-| # | Pattern | Format | Example |
+| # | Pattern | Format | Jurisdiction |
 |---|---|---|---|
-| 1 | `\n(?P<id>\d+[A-Z]?)\.\s*\n(?P<title>...)` | MahaRERA newline-dot | `\n3.\nInformation to be furnished` |
-| 2 | `^\s*(?P<id>\d+[A-Z]?)\.\s+(?P<title>...)\.?—` | Same-line dash | `3. Application for registration.—` |
-| 3 | `^Rule\s+(?P<id>\d+[A-Z]?)\s*[.\-–]\s*(?P<title>...)` | Explicit Rule prefix | `Rule 3 - Application` |
-| 4 | `(?P<id>\d{1,2}[A-Z]?)-\(1\)\s*\n(?P<title>...)` | UP RERA multi-clause | `7-(1)\nThe registration granted...` |
-| 5 | `(?P<id>\d{1,2}[A-Z]?)-(?!\()\s*\n(?P<title>...)` | UP RERA single-clause | `15-\nThe authority shall maintain...` |
+| 1 | `\n(?P<id>\d{1,2}[A-Z]?)\.\s*\n(?P<title>...)` | Newline-dot-newline | MahaRERA |
+| 2 | `^\s*(?P<id>\d{1,2}[A-Z]?)\.\s+(?P<title>...)\.?—` | Same-line em-dash | MahaRERA |
+| 3 | `^Rule\s+(?P<id>\d{1,2}[A-Z]?)\s*[.\-–]\s*(?P<title>...)` | Explicit Rule prefix | Generic |
+| 4 | `^\s*(?P<id>\d{1,2}[A-Z]?)\.\s+(?P<title>...?)\.–` | ASCII hyphen `.-` | Karnataka, Tamil Nadu |
+| 5 | `(?P<id>\d{1,2}[A-Z]?)-\(1\)\s*\n(?P<title>...)` | `N-(1)\nTitle` | UP RERA multi-clause |
+| 6 | `(?P<id>\d{1,2}[A-Z]?)-(?!\()\s*\n(?P<title>...)` | `N-\nTitle` | UP RERA single-clause |
 
-DocType.ACT uses a separate pattern set. Fallback: paragraph split on double newlines.
+`DocType.ACT` uses a separate pattern set. Fallback: paragraph split on double newlines.
+Rule IDs capped at `\d{1,2}` (max 2 digits) — prevents year strings like `2016` matching as rule IDs.
 Logs `no_section_boundaries_found` + `fallback_paragraph_chunking` when falling back.
 
 ### Chunk Size Limits
@@ -289,8 +292,6 @@ def parse(source: str | Path, max_pages: int | None = None) -> ParsedDocument:
         all_pages = all_pages[:max_pages]   # slice before fulltext build
 ```
 
-Used for UP RERA Rules 2016 (`max_pages=24`) to exclude prescribed forms in pages 25–52.
-
 ---
 
 ## 6. Embedding Strategy
@@ -305,36 +306,39 @@ Query time:      "search_query: {query}"     → embed_query()
 ```
 
 Using wrong prefix at query time causes ~10–15% recall degradation.
-The `embed_document()` / `embed_query()` method split enforces this at the API level.
 
 ### Truncation Guard
 
 ```python
-MAX_EMBED_CHARS = 6000   # ~1500 tokens for nomic-embed-text
-if len(text) > MAX_EMBED_CHARS:
-    log.warning("embedding_truncated", original_len=len(text), truncated_to=MAX_EMBED_CHARS)
-    text = text[:MAX_EMBED_CHARS]
+MAX_EMBED_CHARS = 4000   # ~1000 tokens — safe ceiling before prefix added
+
+def embed_document(self, text: str) -> list[float]:
+    if len(text) > MAX_EMBED_CHARS:
+        log.warning("embedding_truncated", original_len=len(text), truncated_to=MAX_EMBED_CHARS)
+        text = text[:MAX_EMBED_CHARS]
+    prefixed = f"search_document: {text.strip()}"  # prefix AFTER truncation
+    return self.embed_one(prefixed)
 ```
+
+Truncation happens **before** prefix is added — prevents Ollama 500 errors on Tamil Nadu
+and other gazette PDFs where sub-sections exceed 10K chars.
 
 ---
 
-## 7. Graph Retriever — Phase 3 Logic
+## 7. Graph Retriever
 
 `graph_retriever.py` — called on `cross_reference`, `penalty_lookup`, `temporal` query types.
 
 ### Section ID Extraction
 
 ```python
-# Matches both "Section 18" / "Sec 18" and "Rule 3" / "Rule 12A"
 section_pattern = re.compile(r'\b(?:section|sec\.?|s\.)\s*(\d+[A-Z]?)\b', re.IGNORECASE)
 rule_pattern    = re.compile(r'\bRule\s+(\d+[A-Z]?)\b', re.IGNORECASE)
 ```
 
-Section pattern takes priority; Rule pattern is fallback.
-
 ### Traversal Strategy (per jurisdiction)
 
-For each jurisdiction (`CENTRAL`, `MAHARASHTRA`, `UTTAR_PRADESH`):
+For each jurisdiction (`CENTRAL`, `MAHARASHTRA`, `UTTAR_PRADESH`, `KARNATAKA`, `TAMIL_NADU`):
 
 ```
 1. Source section chunks    — exact section_id match → is_pinned=True
@@ -346,24 +350,21 @@ For each jurisdiction (`CENTRAL`, `MAHARASHTRA`, `UTTAR_PRADESH`):
 
 ### Pinning Rule
 
-Only the exact `section_id` match gets `is_pinned=True`. Sub-sections like `3(2)`, `3(5)`
-are NOT pinned — they compete normally in the reranker.
+Only the exact `section_id` match gets `is_pinned=True`. Sub-sections are NOT pinned.
 Max pinned chunks: 2 (one per jurisdiction). Remaining 3 slots filled by reranker.
 
 ---
 
 ## 8. Response Contract
 
-Every response from `POST /api/v1/query` conforms to:
-
 ```python
 CivicSetuResponse:
     answer: str                    # plain English, cites section numbers
     citations: list[Citation]      # min_length=1 — NEVER empty
     confidence_score: float        # 0.0–1.0
-    confidence_level: str          # computed: "high"/"medium"/"low"
+    confidence_level: str          # "high"/"medium"/"low"
     query_type_resolved: QueryType
-    conflict_warnings: list[str]   # empty until Phase 5
+    conflict_warnings: list[str]   # empty until Phase 7
     amendment_notice: Optional[str]
     disclaimer: str                # always present
 
@@ -373,10 +374,8 @@ Citation:
     jurisdiction: Jurisdiction
     effective_date: Optional[date]
     source_url: str
-    chunk_id: UUID                 # traceable to exact DB row
+    chunk_id: UUID
 ```
-
-If `citations` would be empty → return `InsufficientInfoResponse` instead.
 
 ---
 
@@ -389,90 +388,52 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 | No chunks retrieved | `InsufficientInfoResponse` returned |
 | Hallucination detected | retry (max 2x) → low confidence answer |
 | DB unreachable | `/health` returns `degraded`, query returns 500 |
-| Scanned PDF detected | Warning logged, text extracted as-is |
+| Scanned PDF detected | Warning logged, fallback URL used (Karnataka) |
 | Section patterns not matched | Fallback paragraph chunking, warning logged |
 | Neo4j event loop mismatch | Prevented — `_get_driver()` creates fresh driver per call |
-| max_pages exceeded | Parser silently caps pages; logged in `pdf_parsed` as total_pages |
+| Embedding input too long | Truncated at 4000 chars before prefix; warning logged |
+| max_pages exceeded | Parser silently caps pages; total_pages reflects capped count |
 
 ---
 
-## 10. Neo4j Graph — Phase 4 State
+## 10. Neo4j Graph — Phase 6 State
 
-**Nodes:** 7 Documents, 1184 Sections
-**Edges:** 905 HAS_SECTION, 665 REFERENCES, 51 DERIVED_FROM
+**Nodes:** 9 Documents, 2090 Sections
+**Edges:** 1297 HAS_SECTION, 933 REFERENCES, 91 DERIVED_FROM
 
 ### Documents in Graph
 
-| Document | Jurisdiction | DocType | Chunks | Sections | REF edges | DERIVED_FROM |
-|---|---|---|---|---|---|---|
-| RERA Act 2016 | CENTRAL | ACT | ~224 | ~224 | ~350 out | — |
-| MahaRERA Rules 2017 | MAHARASHTRA | RULES | ~214 | ~214 | ~61 intra | 17 sec + 1 doc |
-| UP RERA Rules 2016 | UTTAR_PRADESH | RULES | 170 | 33 | 102 | 11 sec + 1 doc |
-| UP RERA General Regs 2019 | UTTAR_PRADESH | CIRCULAR | 85 | 53 | 18 | — |
+| Document | Jurisdiction | DocType | Chunks | Sections | DERIVED_FROM edges |
+|---|---|---|---|---|---|
+| RERA Act 2016 | CENTRAL | ACT | ~224 | ~224 | — |
+| MahaRERA Rules 2017 | MAHARASHTRA | RULES | ~214 | ~214 | 17 sec + 1 doc |
+| UP RERA Rules 2016 | UTTAR_PRADESH | RULES | 170 | 33 | 11 sec + 1 doc |
+| UP RERA General Regs 2019 | UTTAR_PRADESH | CIRCULAR | 85 | 53 | — |
+| Karnataka RERA Rules 2017 | KARNATAKA | RULES | 235 | 45 | 15 sec + 1 doc |
+| Tamil Nadu RERA Rules 2017 | TAMIL_NADU | RULES | 157 | 36 | 15 sec + 1 doc |
 
-> 3 additional documents exist in the DB from earlier ingestion runs (cleaned from graph).
-> Graph reflects only clean, re-seeded documents.
+### Known Open Issues (non-blocking)
 
-### DERIVED_FROM Maps
-
-**MahaRERA Rules 2017 → RERA Act 2016** (17 pairs):
-
-| MahaRERA Rule | RERA Act Section | Subject |
+| Issue | Affected | Root Cause |
 |---|---|---|
-| 3 | 4 | Promoter registration info |
-| 4 | 4 | Promoter declaration |
-| 5 | 4 | Separate account |
-| 6 | 5 | Grant/rejection of project registration |
-| 7 | 6 | Extension of registration |
-| 8 | 7 | Revocation of registration |
-| 10 | 11 | Agreement for Sale |
-| 11 | 9 | Agent registration application |
-| 12 | 9 | Agent grant/rejection |
-| 14 | 10 | Obligations of real estate agents |
-| 15 | 9 | Revocation of agent registration |
-| 17 | 10 | Other functions of agent |
-| 18 | 19 | Rate of interest |
-| 19 | 18 | Timelines for refund |
-| 20 | 11 | Website disclosures (projects) |
-| 21 | 11 | Website disclosures (agents) |
-| 31 | 31 | Governing law / complaints |
+| Act §13 missing from graph | UP rule 14, KA rule 11, TN rule 11 | RERA Act ingestion — §13 chunked under different ID |
+| Act §66 missing from graph | KA rule 19, TN rule 19 | RERA Act ingestion — §66 not ingested |
 
-**UP RERA Rules 2016 → RERA Act 2016** (15 pairs, 11 resolved, 4 unresolved):
+### DERIVED_FROM Map Summary
 
-| UP Rule | RERA Act Section | Status |
-|---|---|---|
-| 3 | 4 | ✓ |
-| 4 | 4 | ✓ |
-| 5 | 4 | ✓ |
-| 6 | 5 | ✓ |
-| 7 | 6 | ✓ |
-| 8 | 7 | ✗ rule_found=False (chunk ID mismatch) |
-| 9 | 9 | ✓ |
-| 10 | 9 | ✓ |
-| 11 | 9 | ✓ |
-| 12 | 10 | ✗ rule_found=False |
-| 13 | 11 | ✗ rule_found=False |
-| 14 | 13 | ✗ act_found=False (RERA Act §13 missing) |
-| 15 | 18 | ✓ |
-| 16 | 19 | ✓ |
-| 18 | 31 | ✓ |
+| Jurisdiction | Mapped pairs | Resolved | Unresolved |
+|---|---|---|---|
+| MAHARASHTRA | 17 | 17 | 0 |
+| UTTAR_PRADESH | 15 | 11 | 4 |
+| KARNATAKA | 17 | 15 | 2 |
+| TAMIL_NADU | 17 | 15 | 2 |
 
-### MetadataExtractor — reference patterns
+### PDF Source Decisions
 
-```python
-# Section references: "Section 18", "section 4A", "s. 9", "sec 18"
-extract_section_references(text) → list[str]
-
-# Rule references: "Rule 3", "Rule 12A", "under Rule 9"
-extract_rule_references(text) → list[str]
-```
-
-Cross-act scrub removes false positives from IPC, CPC, Companies Act, etc.
-RERA section bounds filter: sections 1–92 only.
-
-### GraphStore — driver lifecycle
-
-`_get_driver()` creates a **fresh** `AsyncDriver` on every call — no singleton, no
-`@lru_cache`. Every method wraps its session in `try/finally: await driver.close()`.
-This prevents `RuntimeError: Future attached to a different loop` when `asyncio.run()`
-is called multiple times in the same process (LangGraph sync `.invoke()` pattern).
+| Jurisdiction | Primary URL | Issue | Resolution |
+|---|---|---|---|
+| CENTRAL | indiacode.nic.in | — | — |
+| MAHARASHTRA | naredco.in | — | — |
+| UTTAR_PRADESH | up-rera.in/pdf/rera.pdf | pages 25–52 are forms | max_pages=24 |
+| KARNATAKA | naredco.in (mirror) | Official PDF fully scanned (19MB) | NAREDCO born-digital |
+| TAMIL_NADU | cms.tn.gov.in | pages 16–101 are Forms A–O | max_pages=15 |
