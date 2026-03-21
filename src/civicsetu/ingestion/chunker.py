@@ -55,11 +55,17 @@ class LegalChunker:
         DocType.RULES: [
             # Format 1: MahaRERA "\n2. \nDefinition: -"
             re.compile(
-                '\n(?P<id>\\d+[A-Z]?)\\.\\s*\n\\s*(?P<title>[A-Za-z][^\\n]{3,80})',
+                '\n(?P<id>\\d{1,2}[A-Z]?)\\.\\s*\n\\s*(?P<title>[A-Za-z][^\\n]{3,80})',
+            ),
+            # Karnataka format: "N. Title of rule.-"
+            # Title may wrap one line before the ".-" separator
+            re.compile(
+                r'^\s*(?P<id>\d{1,2}[A-Z]?)\.\s+(?P<title>[A-Za-z].{3,120}?)\.-',
+                re.MULTILINE | re.DOTALL,
             ),
             # Format 2: "3. Application for registration.—"
             re.compile(
-                '^\\s*(?P<id>\\d+[A-Z]?)\\.\\s+(?P<title>[A-Za-z][^—\\n]{3,80})\\.?—',
+                '^\\s*(?P<id>\\d{1,2}[A-Z]?)\\.\\s+(?P<title>[A-Za-z][^—\\n]{3,80})\\.?—',
                 re.MULTILINE,
             ),
             # Format 3: "Rule 3 - Application"

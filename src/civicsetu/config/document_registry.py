@@ -65,4 +65,15 @@ DOCUMENT_REGISTRY: dict[str, DocumentSpec] = {
         dest_subdir="circulars",
     ),
 
+    # ── Karnataka ──────────────────────────────────────────────────────────────
+    "karnataka_rera_rules_2017": DocumentSpec(
+        name="Karnataka Real Estate (Regulation and Development) Rules 2017",
+        url="https://naredco.in/notification/pdfs/Karnataka%20Real%20Estate%20(Regulation%20and%20Development)%20Rules,%202017.pdf",
+        jurisdiction=Jurisdiction.KARNATAKA,
+        doc_type=DocType.RULES,
+        effective_date=date(2017, 7, 10),
+        filename="karnataka_rera_rules_2017.pdf",
+        dest_subdir="rules",
+        max_pages=37
+    ),
 }

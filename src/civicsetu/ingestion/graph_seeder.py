@@ -47,6 +47,26 @@ _SECTION_DERIVED_FROM_MAP: list[tuple[str, str, str, str]] = [
     ("15", "UTTAR_PRADESH", "18", "CENTRAL"),  # Timelines for refund → Sec 18
     ("16", "UTTAR_PRADESH", "19", "CENTRAL"),  # Rate of interest → Sec 19
     ("18", "UTTAR_PRADESH", "31", "CENTRAL"),  # Complaints to Authority → Sec 31
+
+    # ── Karnataka RERA Rules 2017 → RERA Act 2016 ────────────────────────────
+    ("3",  "KARNATAKA", "4",  "CENTRAL"),
+    ("4",  "KARNATAKA", "5",  "CENTRAL"),
+    ("5",  "KARNATAKA", "6",  "CENTRAL"),
+    ("6",  "KARNATAKA", "7",  "CENTRAL"),
+    ("7",  "KARNATAKA", "9",  "CENTRAL"),
+    ("8",  "KARNATAKA", "9",  "CENTRAL"),
+    ("9",  "KARNATAKA", "10", "CENTRAL"),
+    ("10", "KARNATAKA", "11", "CENTRAL"),
+    ("11", "KARNATAKA", "13", "CENTRAL"),
+    ("12", "KARNATAKA", "17", "CENTRAL"),
+    ("13", "KARNATAKA", "18", "CENTRAL"),
+    ("14", "KARNATAKA", "19", "CENTRAL"),
+    ("15", "KARNATAKA", "25", "CENTRAL"),
+    ("16", "KARNATAKA", "31", "CENTRAL"),
+    ("17", "KARNATAKA", "43", "CENTRAL"),
+    ("18", "KARNATAKA", "58", "CENTRAL"),
+    ("19", "KARNATAKA", "66", "CENTRAL"),
+
 ]
 
 
