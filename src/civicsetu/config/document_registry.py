@@ -17,6 +17,7 @@ class DocumentSpec:
     effective_date: date | None
     filename: str          # local cache filename
     dest_subdir: str       # under data/raw/
+    max_pages: int | None = None  # None = all pages; set to cap forms/schedules appendices
 
 
 # ── Registry ─────────────────────────────────────────────────────────────────
@@ -41,6 +42,27 @@ DOCUMENT_REGISTRY: dict[str, DocumentSpec] = {
         effective_date=date(2017, 4, 21),
         filename="mahrera_rules_2017.pdf",
         dest_subdir="rules",
+    ),
+    
+    "up_rera_rules_2016": DocumentSpec(
+        name="Uttar Pradesh Real Estate (Regulation and Development) Rules 2016",
+        url="https://www.up-rera.in/pdf/rera.pdf",
+        jurisdiction=Jurisdiction.UTTAR_PRADESH,
+        doc_type=DocType.RULES,
+        effective_date=date(2016, 10, 27),
+        filename="up_rera_rules_2016.pdf",
+        dest_subdir="rules",
+        max_pages=24,   # Pages 1-24 = Rules text; pages 25-52 = prescribed forms/schedules
+    ),
+
+    "up_rera_general_regulations_2019": DocumentSpec(
+        name="Uttar Pradesh Real Estate Regulatory Authority (General) Regulations 2019",
+        url="https://up-rera.in/ViewDocument?Param=8UttarPradeshRealEstateRegulatoryAuthorityGeneralRegulations201927022019.pdf",
+        jurisdiction=Jurisdiction.UTTAR_PRADESH,
+        doc_type=DocType.CIRCULAR,
+        effective_date=date(2019, 2, 27),
+        filename="up_rera_general_regulations_2019.pdf",
+        dest_subdir="circulars",
     ),
 
 }

@@ -38,59 +38,56 @@ class PDFParser:
     MIN_CHARS_PER_PAGE = 50
 
     @staticmethod
-    def parse(source: str | Path) -> ParsedDocument:
+    def parse(source: str | Path, max_pages: int | None = None) -> ParsedDocument:
         """
         Parse a PDF from a local file path or URL.
+        max_pages: if set, only the first N pages are processed.
         Returns ParsedDocument with per-page text.
         """
-        source = str(source)
+        import fitz
+        
+        source = Path(source)
+        doc = fitz.open(str(source))
+
         log.info("parsing_pdf", source=source)
 
-        doc = pymupdf.open(source)
+        all_pages = list(doc)
+        if max_pages is not None:
+            all_pages = all_pages[:max_pages]
+
         pages = []
-
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text = page.get_text("text")
-
-            # Normalize whitespace — collapse multiple blank lines to one
-            text = re.sub(r'\n{3,}', '\n\n', text)
-            text = re.sub(r'[ \t]+', ' ', text)
-            text = text.strip()
-
+        for page in all_pages:
+            text = page.get_text("text") or ""
             pages.append(RawPage(
-                page_number=page_num + 1,
-                text=text,
-                is_empty=len(text) < PDFParser.MIN_CHARS_PER_PAGE,
+                page_number=page.number + 1,
+                text=text.strip(),
+                is_empty=len(text.strip()) < 30,
             ))
-
-        doc.close()
 
         full_text = "\n\n".join(p.text for p in pages if not p.is_empty)
         scanned_pages = sum(1 for p in pages if p.is_empty)
 
         if scanned_pages > len(pages) * 0.5:
             log.warning(
-                "likely_scanned_pdf",
-                source=source,
+                "mostly_scanned_pdf",
+                source=str(source),
                 scanned_pages=scanned_pages,
                 total_pages=len(pages),
-                action="Phase 2 OCR required",
             )
 
         log.info(
             "pdf_parsed",
-            source=source,
+            source=str(source),
             total_pages=len(pages),
             scanned_pages=scanned_pages,
             total_chars=len(full_text),
         )
 
         return ParsedDocument(
-            source_path=source,
+            source_path=str(source),
+            full_text=full_text,
             total_pages=len(pages),
             pages=pages,
-            full_text=full_text,
         )
 
     @staticmethod

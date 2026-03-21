@@ -1,6 +1,6 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 0.3.0 — Phase 3 Complete
+**Version:** 0.4.0 — Phase 4 Complete
 **Last Updated:** March 2026
 
 ---
@@ -18,8 +18,8 @@ src/civicsetu/
 │   └── schemas.py            Pydantic models: LegalChunk, Citation, RetrievedChunk, CivicSetuResponse
 ├── ingestion/
 │   ├── downloader.py         httpx PDF downloader with MD5 cache check
-│   ├── parser.py             PyMuPDF text extractor, scanned PDF detection
-│   ├── chunker.py            Section-boundary regex chunker + fallback
+│   ├── parser.py             PyMuPDF text extractor — max_pages cap, scanned PDF detection
+│   ├── chunker.py            Section-boundary regex chunker — 5 format patterns + fallback
 │   ├── metadata_extractor.py Date/Section/Rule reference/amendment regex extraction
 │   ├── embedder.py           nomic-embed-text via Ollama (document + query prefixes)
 │   ├── pipeline.py           Orchestrates all ingestion steps end-to-end
@@ -119,10 +119,10 @@ Nodes:
 Edges:
   (:Document)-[:HAS_SECTION]->(:Section)
   (:Section) -[:REFERENCES]->(:Section)       -- intra + cross-jurisdiction citations
-  (:Section) -[:DERIVED_FROM]->(:Section)     -- MahaRERA Rule N → RERA Act Sec M
-  (:Document)-[:DERIVED_FROM]->(:Document)    -- MahaRERA Rules → RERA Act 2016
+  (:Section) -[:DERIVED_FROM]->(:Section)     -- State Rule N → RERA Act Sec M
+  (:Document)-[:DERIVED_FROM]->(:Document)    -- State Rules → RERA Act 2016
 
-Planned (Phase 4+):
+Planned (Phase 5+):
   (:Section) -[:SUPERSEDES]->(:Section)
   (:Section) -[:AMENDED_BY]->(:Amendment)
   (:Section) -[:CONFLICTS_WITH]->(:Section)
@@ -130,17 +130,48 @@ Planned (Phase 4+):
 
 **Live graph stats (Phase 3):**
 
-| Metric        | Count |
-|---------------|-------|
-| Documents     | 2     |
-| Sections      | 438   |
-| HAS_SECTION   | 438   |
-| REFERENCES    | 171   |
-| DERIVED_FROM  | 18    |
+| Metric       | Count |
+|--------------|-------|
+| Documents    | 7     |
+| Sections     | 1184  |
+| HAS_SECTION  | 905   |
+| REFERENCES   | 665   |
+| DERIVED_FROM | 51    |
 
 ---
 
-## 3. LangGraph State Machine
+## 3. Document Registry
+
+`document_registry.py` — single source of truth for all ingested documents.
+
+```python
+@dataclass(frozen=True)
+class DocumentSpec:
+    name: str
+    url: str
+    jurisdiction: Jurisdiction
+    doc_type: DocType
+    effective_date: date | None
+    filename: str
+    dest_subdir: str
+    max_pages: int | None = None  # None = all pages; cap excludes forms/schedules appendices
+```
+
+### Ingested Documents (Phase 4)
+
+| Key | Document | Jurisdiction | DocType | Chunks | max_pages |
+|---|---|---|---|---|---|
+| `rera_act_2016` | RERA Act 2016 | CENTRAL | ACT | ~224 | None |
+| `mahrera_rules_2017` | MahaRERA Rules 2017 | MAHARASHTRA | RULES | ~214 | None |
+| `up_rera_rules_2016` | UP RERA Rules 2016 | UTTAR_PRADESH | RULES | 170 | 24 |
+| `up_rera_general_regulations_2019` | UP RERA General Regulations 2019 | UTTAR_PRADESH | CIRCULAR | 85 | None |
+
+> `up_rera_rules_2016` uses `max_pages=24` — pages 1–24 are rule text; pages 25–52 are
+> prescribed forms/schedules that pollute section IDs if ingested.
+
+---
+
+## 4. LangGraph State Machine
 
 ### State Contract (`agent/state.py`)
 
@@ -185,7 +216,6 @@ class RetrievedChunk(BaseModel):
     is_pinned: bool = False            # True = exact source section, bypasses reranker sort
 ```
 
-
 ### Node Responsibilities
 
 | Node | Input Keys | Output Keys | LLM Call |
@@ -206,7 +236,7 @@ class RetrievedChunk(BaseModel):
 | cross_reference                       | graph_retrieval (→ vector fallback)      |
 | penalty_lookup                        | graph_retrieval (→ vector fallback)      |
 | temporal                              | graph_retrieval (→ vector fallback)      |
-| conflict_detection                    | hybrid_retrieval (Phase 4)               |
+| conflict_detection                    | hybrid_retrieval (Phase 5)               |
 
 ```
 validator → route_after_validator:
@@ -215,33 +245,24 @@ validator → route_after_validator:
     (confidence < 0.5 OR hallucinated) AND retry_count >= 2 → END (low confidence answer)
 ```
 
-
 ---
 
-## 4. Chunking Strategy
+## 5. Chunking Strategy
 
 ### Section Boundary Detection
 
-Two regex patterns to cover both document formats ingested:
+Five regex patterns across DocType.RULES, tried in order (first match wins per line):
 
-**Act format** (RERA Act 2016):
+| # | Pattern | Format | Example |
+|---|---|---|---|
+| 1 | `\n(?P<id>\d+[A-Z]?)\.\s*\n(?P<title>...)` | MahaRERA newline-dot | `\n3.\nInformation to be furnished` |
+| 2 | `^\s*(?P<id>\d+[A-Z]?)\.\s+(?P<title>...)\.?—` | Same-line dash | `3. Application for registration.—` |
+| 3 | `^Rule\s+(?P<id>\d+[A-Z]?)\s*[.\-–]\s*(?P<title>...)` | Explicit Rule prefix | `Rule 3 - Application` |
+| 4 | `(?P<id>\d{1,2}[A-Z]?)-\(1\)\s*\n(?P<title>...)` | UP RERA multi-clause | `7-(1)\nThe registration granted...` |
+| 5 | `(?P<id>\d{1,2}[A-Z]?)-(?!\()\s*\n(?P<title>...)` | UP RERA single-clause | `15-\nThe authority shall maintain...` |
 
-```
-^\s*(?P<id>\d+[A-Z]?)\.?\s*(?P<title>[A-Z][^\n—]{3,80})\.?—
-```
-
-Matches: `18. Return of amount and compensation.—`
-
-**Rule format** (MahaRERA Rules 2017):
-
-```
-\n(?P<id>\d+)\.\s*\n(?P<title>[A-Z][^\n]{3,80})\n
-```
-
-Matches: `\n3.\nInformation to be furnished...\n`
-
-Chunker tries Act pattern first; falls back to Rule pattern; falls back to paragraph
-split if neither matches. Logs `chunking_fallback_used` on paragraph path.
+DocType.ACT uses a separate pattern set. Fallback: paragraph split on double newlines.
+Logs `no_section_boundaries_found` + `fallback_paragraph_chunking` when falling back.
 
 ### Chunk Size Limits
 
@@ -253,14 +274,26 @@ MAX_CHARS = 1500  — split large sections at subsection markers (1), (2), (a), 
 ### Split Priority for Large Sections
 
 ```
-1. Subsection markers: \n\s*\((?:\d+|[a-z])\)\s+
+1. Subsection markers: \n\s*\((?:\d+|[a-z]{1,3})\)\s+
 2. Sentence boundary near MAX_CHARS: rfind('. ')
 3. Hard cut at MAX_CHARS (last resort)
 ```
 
+### parser.py — max_pages cap
+
+```python
+@staticmethod
+def parse(source: str | Path, max_pages: int | None = None) -> ParsedDocument:
+    all_pages = list(doc)
+    if max_pages is not None:
+        all_pages = all_pages[:max_pages]   # slice before fulltext build
+```
+
+Used for UP RERA Rules 2016 (`max_pages=24`) to exclude prescribed forms in pages 25–52.
+
 ---
 
-## 5. Embedding Strategy
+## 6. Embedding Strategy
 
 **Model:** `nomic-embed-text` (Ollama local)
 **Dimension:** 768
@@ -283,12 +316,9 @@ if len(text) > MAX_EMBED_CHARS:
     text = text[:MAX_EMBED_CHARS]
 ```
 
-Prevents silent API errors on oversized chunks. Expected to fire on 0–2 chunks per
-document where subsection splitting fails (complex tables, long definition lists).
-
 ---
 
-## 6. Graph Retriever — Phase 3 Logic
+## 7. Graph Retriever — Phase 3 Logic
 
 `graph_retriever.py` — called on `cross_reference`, `penalty_lookup`, `temporal` query types.
 
@@ -304,7 +334,7 @@ Section pattern takes priority; Rule pattern is fallback.
 
 ### Traversal Strategy (per jurisdiction)
 
-For each jurisdiction (`CENTRAL`, `MAHARASHTRA`):
+For each jurisdiction (`CENTRAL`, `MAHARASHTRA`, `UTTAR_PRADESH`):
 
 ```
 1. Source section chunks    — exact section_id match → is_pinned=True
@@ -322,7 +352,7 @@ Max pinned chunks: 2 (one per jurisdiction). Remaining 3 slots filled by reranke
 
 ---
 
-## 7. Response Contract
+## 8. Response Contract
 
 Every response from `POST /api/v1/query` conforms to:
 
@@ -333,7 +363,7 @@ CivicSetuResponse:
     confidence_score: float        # 0.0–1.0
     confidence_level: str          # computed: "high"/"medium"/"low"
     query_type_resolved: QueryType
-    conflict_warnings: list[str]   # empty until Phase 4
+    conflict_warnings: list[str]   # empty until Phase 5
     amendment_notice: Optional[str]
     disclaimer: str                # always present
 
@@ -350,7 +380,7 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 
 ---
 
-## 8. Error Handling
+## 9. Error Handling
 
 | Scenario | Behaviour |
 | :-- | :-- |
@@ -362,22 +392,30 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 | Scanned PDF detected | Warning logged, text extracted as-is |
 | Section patterns not matched | Fallback paragraph chunking, warning logged |
 | Neo4j event loop mismatch | Prevented — `_get_driver()` creates fresh driver per call |
+| max_pages exceeded | Parser silently caps pages; logged in `pdf_parsed` as total_pages |
 
-## 9. Neo4j Graph — Phase 3 State
+---
 
-**Nodes:** 2 Documents, 438 Sections
-**Edges:** 438 HAS_SECTION, 171 REFERENCES, 18 DERIVED_FROM
+## 10. Neo4j Graph — Phase 4 State
 
-### Documents in graph
+**Nodes:** 7 Documents, 1184 Sections
+**Edges:** 905 HAS_SECTION, 665 REFERENCES, 51 DERIVED_FROM
 
-| Document | Jurisdiction | Sections | REFERENCES | DERIVED_FROM |
-|---|---|---|---|---|
-| RERA Act 2016 | CENTRAL | 224 | 110 outgoing | — |
-| MahaRERA Rules 2017 | MAHARASHTRA | 214 | 61 intra + 0 cross-outgoing | 17 section + 1 doc |
+### Documents in Graph
 
-### DERIVED_FROM section map (`_SECTION_DERIVED_FROM_MAP`)
+| Document | Jurisdiction | DocType | Chunks | Sections | REF edges | DERIVED_FROM |
+|---|---|---|---|---|---|---|
+| RERA Act 2016 | CENTRAL | ACT | ~224 | ~224 | ~350 out | — |
+| MahaRERA Rules 2017 | MAHARASHTRA | RULES | ~214 | ~214 | ~61 intra | 17 sec + 1 doc |
+| UP RERA Rules 2016 | UTTAR_PRADESH | RULES | 170 | 33 | 102 | 11 sec + 1 doc |
+| UP RERA General Regs 2019 | UTTAR_PRADESH | CIRCULAR | 85 | 53 | 18 | — |
 
-17 hand-mapped MahaRERA Rule → RERA Act section pairs:
+> 3 additional documents exist in the DB from earlier ingestion runs (cleaned from graph).
+> Graph reflects only clean, re-seeded documents.
+
+### DERIVED_FROM Maps
+
+**MahaRERA Rules 2017 → RERA Act 2016** (17 pairs):
 
 | MahaRERA Rule | RERA Act Section | Subject |
 |---|---|---|
@@ -399,13 +437,33 @@ If `citations` would be empty → return `InsufficientInfoResponse` instead.
 | 21 | 11 | Website disclosures (agents) |
 | 31 | 31 | Governing law / complaints |
 
+**UP RERA Rules 2016 → RERA Act 2016** (15 pairs, 11 resolved, 4 unresolved):
+
+| UP Rule | RERA Act Section | Status |
+|---|---|---|
+| 3 | 4 | ✓ |
+| 4 | 4 | ✓ |
+| 5 | 4 | ✓ |
+| 6 | 5 | ✓ |
+| 7 | 6 | ✓ |
+| 8 | 7 | ✗ rule_found=False (chunk ID mismatch) |
+| 9 | 9 | ✓ |
+| 10 | 9 | ✓ |
+| 11 | 9 | ✓ |
+| 12 | 10 | ✗ rule_found=False |
+| 13 | 11 | ✗ rule_found=False |
+| 14 | 13 | ✗ act_found=False (RERA Act §13 missing) |
+| 15 | 18 | ✓ |
+| 16 | 19 | ✓ |
+| 18 | 31 | ✓ |
+
 ### MetadataExtractor — reference patterns
 
 ```python
 # Section references: "Section 18", "section 4A", "s. 9", "sec 18"
 extract_section_references(text) → list[str]
 
-# Rule references (Phase 3): "Rule 3", "Rule 12A", "under Rule 9"
+# Rule references: "Rule 3", "Rule 12A", "under Rule 9"
 extract_rule_references(text) → list[str]
 ```
 

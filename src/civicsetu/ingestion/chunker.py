@@ -53,19 +53,28 @@ class LegalChunker:
             ),
         ],
         DocType.RULES: [
-            # Format 1: "\n2. \nDefinition: -" — number, dot, space/newline, title on next line
-            # Matches MahaRERA Rules 2017 actual PDF format
+            # Format 1: MahaRERA "\n2. \nDefinition: -"
             re.compile(
                 '\n(?P<id>\\d+[A-Z]?)\\.\\s*\n\\s*(?P<title>[A-Za-z][^\\n]{3,80})',
             ),
-            # Format 2: "3. Application for registration.—" same-line dash format
+            # Format 2: "3. Application for registration.—"
             re.compile(
                 '^\\s*(?P<id>\\d+[A-Z]?)\\.\\s+(?P<title>[A-Za-z][^—\\n]{3,80})\\.?—',
                 re.MULTILINE,
             ),
-            # Format 3: "Rule 3 - Application" explicit Rule prefix
+            # Format 3: "Rule 3 - Application"
             re.compile(
                 '^Rule\\s+(?P<id>\\d+[A-Z]?)\\s*[.\\-\u2013]\\s*(?P<title>[A-Z][^\\n]{3,80})',
+                re.MULTILINE,
+            ),
+            # UP RERA multi-clause: "7-(1)\nTitle"  ← ADD THIS BACK FIRST
+            re.compile(
+                r'(?P<id>\d{1,2}[A-Z]?)-\(1\)\s*\n\s*(?P<title>[A-Za-z].{3,80})',
+                re.MULTILINE,
+            ),
+            # UP RERA single-clause: "15-\nTitle"  ← then this
+            re.compile(
+                r'(?P<id>\d{1,2}[A-Z]?)-(?!\()\s*\n\s*(?P<title>[A-Za-z].{3,80})',
                 re.MULTILINE,
             ),
         ],

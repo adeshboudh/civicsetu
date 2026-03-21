@@ -9,10 +9,10 @@ from civicsetu.stores.relational_store import AsyncSessionLocal
 
 log = structlog.get_logger(__name__)
 
-# Static mapping: (rule_section_id, rule_jurisdiction) → [rera_section_ids]
-# Derived from MahaRERA Rules 2017 ↔ RERA Act 2016 structural analysis.
+# Static mapping: (rule_section_id, rule_jurisdiction, act_section_id, act_jurisdiction)
+# Covers MahaRERA Rules 2017 and UP RERA Rules 2016 → RERA Act 2016.
 _SECTION_DERIVED_FROM_MAP: list[tuple[str, str, str, str]] = [
-    # (rule_id, rule_jurisdiction, act_section_id, act_jurisdiction)
+    # ── MahaRERA Rules 2017 → RERA Act 2016 ──────────────────────────────────
     ("3",  "MAHARASHTRA", "4",  "CENTRAL"),  # Promoter registration info → Sec 4
     ("4",  "MAHARASHTRA", "4",  "CENTRAL"),  # Promoter declaration → Sec 4
     ("5",  "MAHARASHTRA", "4",  "CENTRAL"),  # Separate account → Sec 4
@@ -30,32 +30,37 @@ _SECTION_DERIVED_FROM_MAP: list[tuple[str, str, str, str]] = [
     ("20", "MAHARASHTRA", "11", "CENTRAL"),  # Website disclosures (projects) → Sec 11
     ("21", "MAHARASHTRA", "11", "CENTRAL"),  # Website disclosures (agents) → Sec 11
     ("31", "MAHARASHTRA", "31", "CENTRAL"),  # Complaints to Authority → Sec 31
+
+    # ── UP RERA Rules 2016 → RERA Act 2016 ───────────────────────────────────
+    ("3",  "UTTAR_PRADESH", "4",  "CENTRAL"),  # Project registration application → Sec 4
+    ("4",  "UTTAR_PRADESH", "4",  "CENTRAL"),  # Promoter declaration → Sec 4
+    ("5",  "UTTAR_PRADESH", "4",  "CENTRAL"),  # Separate account obligation → Sec 4
+    ("6",  "UTTAR_PRADESH", "5",  "CENTRAL"),  # Grant/rejection of registration → Sec 5
+    ("7",  "UTTAR_PRADESH", "6",  "CENTRAL"),  # Extension of registration → Sec 6
+    ("8",  "UTTAR_PRADESH", "7",  "CENTRAL"),  # Revocation of registration → Sec 7
+    ("9",  "UTTAR_PRADESH", "9",  "CENTRAL"),  # Agent registration application → Sec 9
+    ("10", "UTTAR_PRADESH", "9",  "CENTRAL"),  # Agent grant/rejection → Sec 9
+    ("11", "UTTAR_PRADESH", "9",  "CENTRAL"),  # Revocation of agent registration → Sec 9
+    ("12", "UTTAR_PRADESH", "10", "CENTRAL"),  # Obligations of real estate agents → Sec 10
+    ("13", "UTTAR_PRADESH", "11", "CENTRAL"),  # Functions of promoters (website) → Sec 11
+    ("14", "UTTAR_PRADESH", "13", "CENTRAL"),  # Agreement for sale → Sec 13
+    ("15", "UTTAR_PRADESH", "18", "CENTRAL"),  # Timelines for refund → Sec 18
+    ("16", "UTTAR_PRADESH", "19", "CENTRAL"),  # Rate of interest → Sec 19
+    ("18", "UTTAR_PRADESH", "31", "CENTRAL"),  # Complaints to Authority → Sec 31
 ]
+
 
 class GraphSeeder:
     """
     Reads ingested chunks from PostgreSQL and seeds the Neo4j knowledge graph.
-
     Run after every ingestion batch — idempotent via MERGE.
-
-    Seeding creates:
-      (:Document) nodes
-      (:Section)  nodes
-      (:Document)-[:HAS_SECTION]->(:Section) edges
-      (:Section)-[:REFERENCES]->(:Section)   edges (from MetadataExtractor._section_references)
     """
 
     @staticmethod
     async def seed_from_postgres(doc_id: str | None = None) -> dict:
-        """
-        Seed Neo4j from legal_chunks in Postgres.
-        If doc_id is provided, seeds only that document.
-        If None, seeds all documents.
-        Returns counts of nodes and edges created.
-        """
         await GraphStore.create_constraints()
 
-        # Step 1 — Load documents
+        # Step 1 — Load target documents (1 if doc_id given, all if None)
         docs = await GraphSeeder._load_documents(doc_id)
         log.info("graph_seeder_docs_loaded", count=len(docs))
 
@@ -64,7 +69,6 @@ class GraphSeeder:
         edge_count = 0
 
         for doc in docs:
-            # Step 2 — Upsert Document node
             await GraphStore.upsert_document(
                 doc_id=str(doc["doc_id"]),
                 doc_name=doc["doc_name"],
@@ -74,12 +78,10 @@ class GraphSeeder:
             )
             doc_count += 1
 
-            # Step 3 — Load chunks for this document
             chunks = await GraphSeeder._load_chunks(str(doc["doc_id"]))
             log.info("graph_seeder_chunks_loaded", doc_name=doc["doc_name"], count=len(chunks))
 
             for chunk in chunks:
-                # Step 4 — Upsert Section node + HAS_SECTION edge
                 await GraphStore.upsert_section(
                     chunk_id=str(chunk["chunk_id"]),
                     doc_id=str(doc["doc_id"]),
@@ -91,24 +93,33 @@ class GraphSeeder:
                 )
                 section_count += 1
 
-            # Step 5 — Create REFERENCES edges from extracted references
-            doc_type_str = doc["doc_type"]
             ref_edges = await GraphSeeder._seed_references(
-                str(doc["doc_id"]), doc["jurisdiction"], doc_type_str
+                str(doc["doc_id"]), doc["jurisdiction"], doc["doc_type"]
             )
             edge_count += ref_edges
 
-        # Step 6 — DERIVED_FROM edges (MahaRERA → RERA Act)
-        # Resolve doc_ids from loaded docs by jurisdiction + doc_type
-        derived_count = 0
-        state_docs = [d for d in docs if d["jurisdiction"] != "CENTRAL" and d["doc_type"].upper() == "RULES"]
-        central_docs = [d for d in docs if d["jurisdiction"] == "CENTRAL" and d["doc_type"].upper() == "ACT"]
+        # Step 6 — DERIVED_FROM edges
+        # ── BUG FIX: when doc_id is given, `docs` has 1 entry.
+        # Central act docs would never appear → edges silently skipped.
+        # Load ALL active docs unconditionally to resolve central act doc_ids.
+        all_active_docs = await GraphSeeder._load_documents(None)
+
+        state_docs = [
+            d for d in docs
+            if d["jurisdiction"] != "CENTRAL" and d["doc_type"].upper() == "RULES"
+        ]
+        central_docs = [
+            d for d in all_active_docs
+            if d["jurisdiction"] == "CENTRAL" and d["doc_type"].upper() == "ACT"
+        ]
 
         if state_docs and central_docs:
+            derived_count = 0
             for state_doc in state_docs:
                 for central_doc in central_docs:
                     derived_count += await GraphSeeder._seed_derived_from(
                         derived_doc_id=str(state_doc["doc_id"]),
+                        rule_jurisdiction=state_doc["jurisdiction"],
                         parent_doc_id=str(central_doc["doc_id"]),
                     )
             log.info("derived_from_total_section_edges", count=derived_count)
@@ -132,7 +143,9 @@ class GraphSeeder:
                     {"doc_id": doc_id},
                 )
             else:
-                result = await session.execute(text("SELECT * FROM documents WHERE is_active = true"))
+                result = await session.execute(
+                    text("SELECT * FROM documents WHERE is_active = true")
+                )
             return [dict(row._mapping) for row in result.fetchall()]
 
     @staticmethod
@@ -151,15 +164,6 @@ class GraphSeeder:
 
     @staticmethod
     async def _load_chunks_with_refs(doc_id: str) -> list[dict]:
-        """
-        Load chunks joined with their section reference metadata.
-        References are stored in a separate table seeded during ingestion.
-        Phase 0: MetadataExtractor stores _section_references as transient
-        chunk dict keys — not persisted to Postgres.
-
-        For Phase 1 we need them persisted. This method currently re-runs
-        the extractor over the stored text to recover references.
-        """
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 text("""
@@ -173,14 +177,6 @@ class GraphSeeder:
 
     @staticmethod
     async def _seed_references(doc_id: str, jurisdiction: str, doc_type: str) -> int:
-        """
-        Re-extracts section references from chunk text and creates REFERENCES edges.
-
-        For ACT documents (CENTRAL): intra-doc RERA section refs only.
-        For RULES documents (MAHARASHTRA):
-        - Intra-doc Rule refs → REFERENCES edges within MAHARASHTRA
-        - Cross-doc RERA Act refs → REFERENCES edges to CENTRAL sections
-        """
         from civicsetu.ingestion.metadata_extractor import MetadataExtractor
 
         chunks = await GraphSeeder._load_chunks_with_refs(doc_id)
@@ -188,86 +184,80 @@ class GraphSeeder:
 
         for chunk in chunks:
             chunk_id = str(chunk["chunk_id"])
-            text = chunk["text"]
+            chunk_text = chunk["text"]
 
             if doc_type.upper() == "RULES":
-                # Intra-doc: rule references within same jurisdiction
-                rule_refs = MetadataExtractor.extract_rule_references(text)
+                rule_refs = MetadataExtractor.extract_rule_references(chunk_text)
                 if rule_refs:
-                    count = await GraphStore.create_references_edges(
+                    total_edges += await GraphStore.create_references_edges(
                         source_chunk_id=chunk_id,
                         referenced_section_ids=rule_refs,
                         jurisdiction=jurisdiction,
                     )
-                    total_edges += count
-
-                # Cross-doc: RERA Act section references → CENTRAL
-                rera_refs = MetadataExtractor.extract_section_references(text)
+                rera_refs = MetadataExtractor.extract_section_references(chunk_text)
                 if rera_refs:
-                    count = await GraphStore.create_cross_jurisdiction_references_edges(
+                    total_edges += await GraphStore.create_cross_jurisdiction_references_edges(
                         source_chunk_id=chunk_id,
                         referenced_section_ids=rera_refs,
                         target_jurisdiction="CENTRAL",
                     )
-                    total_edges += count
-
             else:
-                # ACT: intra-doc only
-                refs = MetadataExtractor.extract_section_references(text)
+                refs = MetadataExtractor.extract_section_references(chunk_text)
                 if refs:
-                    count = await GraphStore.create_references_edges(
+                    total_edges += await GraphStore.create_references_edges(
                         source_chunk_id=chunk_id,
                         referenced_section_ids=refs,
                         jurisdiction=jurisdiction,
                     )
-                    total_edges += count
 
         return total_edges
 
     @staticmethod
     async def _seed_derived_from(
         derived_doc_id: str,
+        rule_jurisdiction: str,
         parent_doc_id: str,
     ) -> int:
         """
-        Seeds DERIVED_FROM edges:
-        1. Document → Document (MahaRERA Rules → RERA Act)
-        2. Section → Section   (Rule 3 → Section 4, etc.)
-        Returns count of section-level edges created.
+        Seeds DERIVED_FROM edges for a specific state rules doc → central act doc.
+        Filters _SECTION_DERIVED_FROM_MAP by rule_jurisdiction so Maharashtra
+        entries never fire when seeding UP RERA and vice versa.
         """
-        # Document-level edge
         await GraphStore.create_document_derived_from(
             derived_doc_id=derived_doc_id,
             parent_doc_id=parent_doc_id,
         )
         log.info("derived_from_doc_edge_created",
-                derived=derived_doc_id, parent=parent_doc_id)
+                 derived=derived_doc_id, parent=parent_doc_id,
+                 jurisdiction=rule_jurisdiction)
 
-        # Section-level edges — resolve chunk_ids from Postgres
+        # Filter map to only this jurisdiction's entries
+        relevant_mappings = [
+            (rule_id, act_id)
+            for rule_id, rule_jur, act_id, act_jur in _SECTION_DERIVED_FROM_MAP
+            if rule_jur == rule_jurisdiction
+        ]
+        log.info("derived_from_mappings_loaded",
+                 jurisdiction=rule_jurisdiction, count=len(relevant_mappings))
+
         edge_count = 0
         async with AsyncSessionLocal() as session:
-            for rule_id, rule_jur, act_id, act_jur in _SECTION_DERIVED_FROM_MAP:
-                # Get rule section chunk_id
+            for rule_id, act_id in relevant_mappings:
                 rule_result = await session.execute(
                     text("""
                         SELECT chunk_id FROM legal_chunks
-                        WHERE doc_id = :doc_id
-                        AND section_id = :section_id
-                        AND status = 'active'
-                        LIMIT 1
+                        WHERE doc_id = :doc_id AND section_id = :section_id
+                        AND status = 'active' LIMIT 1
                     """),
                     {"doc_id": derived_doc_id, "section_id": rule_id},
                 )
                 rule_row = rule_result.fetchone()
 
-                # Get act section chunk_id
                 act_result = await session.execute(
                     text("""
                         SELECT chunk_id FROM legal_chunks
-                        WHERE doc_id = :doc_id
-                        AND section_id = :section_id
-                        AND status = 'active'
-                        LIMIT 1
+                        WHERE doc_id = :doc_id AND section_id = :section_id
+                        AND status = 'active' LIMIT 1
                     """),
                     {"doc_id": parent_doc_id, "section_id": act_id},
                 )
@@ -276,6 +266,7 @@ class GraphSeeder:
                 if not rule_row or not act_row:
                     log.warning(
                         "derived_from_section_not_found",
+                        jurisdiction=rule_jurisdiction,
                         rule_id=rule_id, act_id=act_id,
                         rule_found=bool(rule_row), act_found=bool(act_row),
                     )
@@ -287,7 +278,9 @@ class GraphSeeder:
                 )
                 edge_count += 1
                 log.info("derived_from_section_edge_created",
-                        rule_section=rule_id, act_section=act_id)
+                         jurisdiction=rule_jurisdiction,
+                         rule_section=rule_id, act_section=act_id)
 
-        log.info("derived_from_seeding_complete", section_edges=edge_count)
+        log.info("derived_from_seeding_complete",
+                 jurisdiction=rule_jurisdiction, section_edges=edge_count)
         return edge_count

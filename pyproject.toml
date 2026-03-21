@@ -109,3 +109,9 @@ packages = ["civicsetu"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--tb=short -q"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]

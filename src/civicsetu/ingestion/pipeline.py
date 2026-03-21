@@ -43,6 +43,7 @@ class IngestionPipeline:
         dest_subdir: str = "",
         filename: str | None = None,
         force_redownload: bool = False,
+        max_pages: int | None = None,
     ) -> IngestedDocument:
         """
         Full pipeline: URL → vectors in pgvector.
@@ -61,7 +62,7 @@ class IngestionPipeline:
         )
 
         # Step 2 — Parse
-        parsed = PDFParser.parse(local_path)
+        parsed = PDFParser.parse(local_path, max_pages=max_pages)
 
         # Step 3 — Chunk
         doc_id = uuid4()
