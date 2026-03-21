@@ -90,6 +90,11 @@ class Embedder:
         Always use this for chunks at ingestion time.
         Always use embed_query() for user queries at retrieval time.
         """
+        MAX_EMBED_CHARS = 4000
+        if len(text) > MAX_EMBED_CHARS:
+            log.warning("embedding_truncated",
+                        original_len=len(text), truncated_to=MAX_EMBED_CHARS)
+            text = text[:MAX_EMBED_CHARS]
         prefixed = f"search_document: {text.strip()}"
         return self.embed_one(prefixed)
 

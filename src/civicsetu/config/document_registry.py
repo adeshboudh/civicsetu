@@ -76,4 +76,16 @@ DOCUMENT_REGISTRY: dict[str, DocumentSpec] = {
         dest_subdir="rules",
         max_pages=37
     ),
+
+    # ── Tamil Nadu ─────────────────────────────────────────────────────────────
+    "tn_rera_rules_2017": DocumentSpec(
+        name="Tamil Nadu Real Estate (Regulation and Development) Rules 2017",
+        url="https://cms.tn.gov.in/cms_migrated/document/rules_regulations/TNRERA_Rules_2017.pdf",
+        jurisdiction=Jurisdiction.TAMIL_NADU,
+        doc_type=DocType.RULES,
+        effective_date=date(2017, 6, 22),
+        filename="tn_rera_rules_2017.pdf",
+        dest_subdir="rules",
+        max_pages=15,
+    ),
 }

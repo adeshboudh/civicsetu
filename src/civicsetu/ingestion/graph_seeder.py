@@ -67,6 +67,24 @@ _SECTION_DERIVED_FROM_MAP: list[tuple[str, str, str, str]] = [
     ("18", "KARNATAKA", "58", "CENTRAL"),
     ("19", "KARNATAKA", "66", "CENTRAL"),
 
+    # ── Tamil Nadu RERA Rules 2017 → RERA Act 2016 ───────────────────────────
+    ("3",  "TAMIL_NADU", "4",  "CENTRAL"),
+    ("4",  "TAMIL_NADU", "5",  "CENTRAL"),
+    ("5",  "TAMIL_NADU", "6",  "CENTRAL"),
+    ("6",  "TAMIL_NADU", "7",  "CENTRAL"),
+    ("7",  "TAMIL_NADU", "9",  "CENTRAL"),
+    ("8",  "TAMIL_NADU", "9",  "CENTRAL"),
+    ("9",  "TAMIL_NADU", "10", "CENTRAL"),
+    ("10", "TAMIL_NADU", "11", "CENTRAL"),
+    ("11", "TAMIL_NADU", "13", "CENTRAL"),
+    ("12", "TAMIL_NADU", "17", "CENTRAL"),
+    ("13", "TAMIL_NADU", "18", "CENTRAL"),
+    ("14", "TAMIL_NADU", "19", "CENTRAL"),
+    ("15", "TAMIL_NADU", "25", "CENTRAL"),
+    ("16", "TAMIL_NADU", "31", "CENTRAL"),
+    ("17", "TAMIL_NADU", "43", "CENTRAL"),
+    ("18", "TAMIL_NADU", "58", "CENTRAL"),
+    ("19", "TAMIL_NADU", "66", "CENTRAL"),
 ]
 
 
