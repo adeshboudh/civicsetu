@@ -1,3 +1,14 @@
+---
+title: CivicSetu
+emoji: 🏛️
+colorFrom: blue
+colorTo: purple
+sdk: docker
+sdk_version: "default"
+app_file: app.py
+pinned: false
+---
+
 # CivicSetu
 
 Open-source RAG system for querying Indian civic and legal documents — with accurate
