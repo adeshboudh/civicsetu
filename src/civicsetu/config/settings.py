@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(
         default="http://localhost:11434", alias="OLLAMA_BASE_URL"
     )
+    hf_token: str = Field(default="", alias="HF_TOKEN")
 
     # PostgreSQL
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")

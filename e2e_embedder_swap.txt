@@ -1,0 +1,458 @@
+Compiling LangGraph...
+Running 12 test cases...
+
+  [FACT_CENTRAL_01] ... 2026-03-22 19:33:20 [info     ] classifier_node                query='What are the obligations of a promoter under RERA?'
+2026-03-22 19:33:22 [info     ] classified                     query_type=fact_lookup rewritten='What are the statutory duties and obligations of a real estate promoter under th'
+2026-03-22 19:33:22 [info     ] vector_retrieval_node          query='What are the statutory duties and obligations of a real estate promoter under th' top_k=5
+Note: Environment variable`HF_TOKEN` is set and is the current active token independently from the token you've just configured.
+2026-03-22 19:33:44 [info     ] loading_embedding_model        model=nomic-ai/nomic-embed-text-v1.5
+<All keys matched successfully>
+2026-03-22 19:33:53 [info     ] vector_search_complete         jurisdiction=None results=5 top_k=5
+2026-03-22 19:33:53 [info     ] vector_retrieval_complete      base_results=5 results=25
+2026-03-22 19:33:53 [info     ] reranker_node                  unique_chunks=25
+2026-03-22 19:34:01 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:34:02 [info     ] generator_node                 context_chunks=5 query='What are the obligations of a promoter under RERA?'
+[92m19:34:02 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:04 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:04 [info     ] generator_citations_anchored   cited=4 total_context=5 unique_citations=4
+[92m19:34:04 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:05 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:05 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (45.37s, conf=1.0, cit=4)
+  [FACT_MH_01] ... 2026-03-22 19:34:06 [info     ] classifier_node                query='What documents must a promoter submit for project registration in Maharashtra?'
+[92m19:34:06 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:07 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:07 [info     ] classified                     query_type=fact_lookup rewritten='List of documents required for real estate project registration by a promoter un'
+2026-03-22 19:34:07 [info     ] vector_retrieval_node          query='List of documents required for real estate project registration by a promoter un' top_k=5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  2.87it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  2.87it/s]2026-03-22 19:34:08 [info     ] vector_search_complete         jurisdiction=MAHARASHTRA results=5 top_k=5
+2026-03-22 19:34:08 [info     ] vector_retrieval_complete      base_results=5 results=25
+2026-03-22 19:34:08 [info     ] reranker_node                  unique_chunks=25
+2026-03-22 19:34:16 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:34:16 [info     ] generator_node                 context_chunks=5 query='What documents must a promoter submit for project registration in Maharashtra?'
+
+[92m19:34:16 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:19 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:19 [info     ] generator_citations_anchored   cited=2 total_context=5 unique_citations=2
+[92m19:34:19 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:21 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:21 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (15.47s, conf=1.0, cit=2)
+  [FACT_UP_01] ... 2026-03-22 19:34:21 [info     ] classifier_node                query='What is the timeline for refund of amount paid by allottee in Uttar Pradesh?'
+[92m19:34:21 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:22 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:22 [info     ] classified                     query_type=fact_lookup rewritten='What is the prescribed timeline for the refund of amount paid by an allottee to '
+2026-03-22 19:34:22 [info     ] vector_retrieval_node          query='What is the prescribed timeline for the refund of amount paid by an allottee to ' top_k=5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  3.43it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  3.43it/s]2026-03-22 19:34:23 [info     ] vector_search_complete         jurisdiction=UTTAR_PRADESH results=5 top_k=5
+2026-03-22 19:34:23 [info     ] vector_retrieval_complete      base_results=5 results=5
+2026-03-22 19:34:23 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:34:24 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:34:24 [info     ] generator_node                 context_chunks=5 query='What is the timeline for refund of amount paid by allottee in Uttar Pradesh?'
+
+[92m19:34:24 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:26 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:26 [info     ] generator_citations_anchored   cited=1 total_context=5 unique_citations=1
+[92m19:34:26 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:28 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:28 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (7.1s, conf=1.0, cit=1)
+  [FACT_KA_01] ... 2026-03-22 19:34:28 [info     ] classifier_node                query='What are the grounds for revocation of project registration in Karnataka?'
+[92m19:34:28 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:30 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:30 [info     ] classified                     query_type=fact_lookup rewritten='What are the legal grounds for the revocation of registration of a real estate p'
+2026-03-22 19:34:30 [info     ] vector_retrieval_node          query='What are the legal grounds for the revocation of registration of a real estate p' top_k=5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.48it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.48it/s]2026-03-22 19:34:30 [info     ] vector_search_complete         jurisdiction=KARNATAKA results=5 top_k=5
+2026-03-22 19:34:30 [info     ] vector_retrieval_complete      base_results=5 results=5
+2026-03-22 19:34:30 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:34:30 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:34:30 [info     ] generator_node                 context_chunks=5 query='What are the grounds for revocation of project registration in Karnataka?'
+
+[92m19:34:30 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:32 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:32 [info     ] generator_citations_anchored   cited=1 total_context=5 unique_citations=1
+[92m19:34:32 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:33 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:33 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (5.03s, conf=1.0, cit=1)
+  [FACT_TN_01] ... 2026-03-22 19:34:33 [info     ] classifier_node                query='What information must a real estate agent provide to buyers in Tamil Nadu?'
+[92m19:34:33 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:35 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:35 [info     ] classified                     query_type=fact_lookup rewritten='What are the mandatory disclosure obligations and duties of a real estate agent '
+2026-03-22 19:34:35 [info     ] vector_retrieval_node          query='What are the mandatory disclosure obligations and duties of a real estate agent ' top_k=5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.08it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  8.08it/s]2026-03-22 19:34:35 [info     ] vector_search_complete         jurisdiction=TAMIL_NADU results=5 top_k=5
+2026-03-22 19:34:35 [info     ] vector_retrieval_complete      base_results=5 results=5
+2026-03-22 19:34:35 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:34:36 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:34:36 [info     ] generator_node                 context_chunks=5 query='What information must a real estate agent provide to buyers in Tamil Nadu?'
+
+[92m19:34:36 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:37 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:37 [info     ] generator_citations_anchored   cited=1 total_context=5 unique_citations=1
+[92m19:34:37 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:38 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:38 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (5.16s, conf=1.0, cit=1)
+  [XREF_01] ... 2026-03-22 19:34:38 [info     ] classifier_node                query='What does section 18 of RERA say about refund obligations?'
+[92m19:34:38 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:39 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:39 [info     ] classified                     query_type=cross_reference rewritten='What are the provisions and obligations of a promoter regarding refund of the am'
+2026-03-22 19:34:40 [info     ] graph_retrieval_node           query='What are the provisions and obligations of a promoter regarding refund of the am'
+2026-03-22 19:34:40 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['CENTRAL', 'MAHARASHTRA', 'UTTAR_PRADESH', 'KARNATAKA', 'TAMIL_NADU'] section_id=18
+2026-03-22 19:34:42 [info     ] graph_retriever_complete       chunks_hydrated=19 deduped_total=19 jurisdictions_searched=['CENTRAL', 'MAHARASHTRA', 'UTTAR_PRADESH', 'KARNATAKA', 'TAMIL_NADU'] pinned=5 section_id=18
+2026-03-22 19:34:42 [info     ] graph_retrieval_complete       results=19
+2026-03-22 19:34:42 [info     ] reranker_node                  unique_chunks=19
+2026-03-22 19:34:46 [info     ] reranker_complete              pinned=2 reranked=5
+2026-03-22 19:34:46 [info     ] generator_node                 context_chunks=5 query='What does section 18 of RERA say about refund obligations?'
+[92m19:34:46 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:49 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:49 [info     ] generator_citations_anchored   cited=1 total_context=5 unique_citations=1
+[92m19:34:49 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:50 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:50 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (11.95s, conf=1.0, cit=1)
+  [XREF_02] ... 2026-03-22 19:34:50 [info     ] classifier_node                query='Which state rules implement section 9 of the RERA Act on agent registration?'
+[92m19:34:50 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:51 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:51 [info     ] classified                     query_type=cross_reference rewritten='Identify the state-specific rules framed under the Real Estate (Regulation and D'
+2026-03-22 19:34:51 [info     ] graph_retrieval_node           query='Identify the state-specific rules framed under the Real Estate (Regulation and D'
+2026-03-22 19:34:52 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['CENTRAL', 'MAHARASHTRA', 'UTTAR_PRADESH', 'KARNATAKA', 'TAMIL_NADU'] section_id=9
+2026-03-22 19:34:53 [info     ] graph_retriever_complete       chunks_hydrated=20 deduped_total=58 jurisdictions_searched=['CENTRAL', 'MAHARASHTRA', 'UTTAR_PRADESH', 'KARNATAKA', 'TAMIL_NADU'] pinned=3 section_id=9
+2026-03-22 19:34:53 [info     ] graph_retrieval_complete       results=20
+2026-03-22 19:34:53 [info     ] reranker_node                  unique_chunks=20
+2026-03-22 19:34:56 [info     ] reranker_complete              pinned=2 reranked=5
+2026-03-22 19:34:56 [info     ] generator_node                 context_chunks=5 query='Which state rules implement section 9 of the RERA Act on agent registration?'
+[92m19:34:56 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:57 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:57 [info     ] generator_citations_anchored   cited=2 total_context=5 unique_citations=2
+[92m19:34:58 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:34:59 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:34:59 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (9.06s, conf=1.0, cit=2)
+  [XREF_MH_01] ... 2026-03-22 19:34:59 [info     ] classifier_node                query='Which MahaRERA rule derives from section 4 of the central RERA Act?'
+[92m19:34:59 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:35:00 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:00 [info     ] classified                     query_type=cross_reference rewritten='Which rule of the Maharashtra Real Estate (Regulation and Development) Rules, 20'
+2026-03-22 19:35:00 [info     ] graph_retrieval_node           query='Which rule of the Maharashtra Real Estate (Regulation and Development) Rules, 20'
+2026-03-22 19:35:00 [info     ] graph_retriever_traversing     depth=2 jurisdictions=['MAHARASHTRA'] section_id=4
+2026-03-22 19:35:00 [info     ] graph_retriever_complete       chunks_hydrated=3 deduped_total=3 jurisdictions_searched=['MAHARASHTRA'] pinned=1 section_id=4
+2026-03-22 19:35:00 [info     ] graph_retrieval_complete       results=3
+2026-03-22 19:35:00 [info     ] reranker_node                  unique_chunks=3
+2026-03-22 19:35:01 [info     ] reranker_complete              pinned=1 reranked=3
+2026-03-22 19:35:01 [info     ] generator_node                 context_chunks=3 query='Which MahaRERA rule derives from section 4 of the central RERA Act?'
+[92m19:35:01 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:35:03 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:03 [warning  ] generator_cited_chunks_empty   fallback=all_chunks raw_indices=[]
+2026-03-22 19:35:03 [info     ] generator_citations_anchored   cited=3 total_context=3 unique_citations=3
+[92m19:35:03 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:35:04 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:04 [info     ] validator_node                 confidence=0.4 hallucinated=False
+PASS  (4.56s, conf=0.4, cit=3)
+  [PENALTY_01] ... 2026-03-22 19:35:04 [info     ] classifier_node                query='What is the penalty for non-registration of a real estate project under RERA?'
+[92m19:35:04 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:35:05 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:05 [info     ] classified                     query_type=penalty_lookup rewritten='What are the penalties and fines prescribed under the Real Estate (Regulation an'
+2026-03-22 19:35:05 [info     ] graph_retrieval_node           query='What are the penalties and fines prescribed under the Real Estate (Regulation an'
+2026-03-22 19:35:05 [info     ] graph_retriever_no_section_found query='What are the penalties and fines prescribed under the Real Estate (Regulation an'
+2026-03-22 19:35:05 [info     ] graph_retrieval_complete       results=0
+2026-03-22 19:35:05 [info     ] graph_retrieval_fallback_to_vector query='What are the penalties and fines prescribed under the Real Estate (Regulation an'
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.11it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.11it/s]2026-03-22 19:35:05 [info     ] vector_search_complete         jurisdiction=None results=5 top_k=5
+2026-03-22 19:35:05 [info     ] graph_fallback_complete        results=5
+2026-03-22 19:35:05 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:35:06 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:35:06 [info     ] generator_node                 context_chunks=5 query='What is the penalty for non-registration of a real estate project under RERA?'
+
+[92m19:35:06 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:35:14 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:14 [warning  ] generator_cited_chunks_empty   fallback=all_chunks raw_indices=[]
+2026-03-22 19:35:14 [info     ] generator_citations_anchored   cited=5 total_context=5 unique_citations=5
+[92m19:35:14 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+[92m19:35:16 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:16 [info     ] validator_node                 confidence=1.0 hallucinated=False
+PASS  (11.91s, conf=1.0, cit=5)
+  [PENALTY_02] ... 2026-03-22 19:35:16 [info     ] classifier_node                query='What are the penalties for a promoter who fails to register under RERA?'
+[92m19:35:16 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:16 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 44.063289743s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "44s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:16 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:17 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:17 [info     ] classified                     query_type=penalty_lookup rewritten='What are the penalties or consequences for a promoter who fails to register unde'
+2026-03-22 19:35:17 [info     ] graph_retrieval_node           query='What are the penalties or consequences for a promoter who fails to register unde'
+2026-03-22 19:35:17 [info     ] graph_retriever_no_section_found query='What are the penalties or consequences for a promoter who fails to register unde'
+2026-03-22 19:35:17 [info     ] graph_retrieval_complete       results=0
+2026-03-22 19:35:17 [info     ] graph_retrieval_fallback_to_vector query='What are the penalties or consequences for a promoter who fails to register unde'
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.20it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  9.20it/s]2026-03-22 19:35:17 [info     ] vector_search_complete         jurisdiction=None results=5 top_k=5
+2026-03-22 19:35:17 [info     ] graph_fallback_complete        results=5
+2026-03-22 19:35:17 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:35:18 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:35:18 [info     ] generator_node                 context_chunks=5 query='What are the penalties for a promoter who fails to register under RERA?'
+
+[92m19:35:18 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:18 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 42.083030277s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "42s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:18 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:19 [info     ] generator_citations_anchored   cited=1 total_context=5 unique_citations=1
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:19 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 41.309273174s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "41s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:19 [info     ] validator_node                 confidence=0.9 hallucinated=False
+PASS  (3.16s, conf=0.9, cit=1)
+  [MULTI_01] ... 2026-03-22 19:35:19 [info     ] classifier_node                query='How does Karnataka handle extension of project registration compared to the cent'
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:19 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 40.919136366s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "40s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:19 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:19 [info     ] classified                     query_type=conflict_detection rewritten='Does the Karnataka RERA extension of project registration contradict the central'
+2026-03-22 19:35:19 [info     ] hybrid_retrieval_node          query='Does the Karnataka RERA extension of project registration contradict the central'
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.30it/s]Batches: 100%|██████████| 1/1 [00:00<00:00,  6.28it/s]2026-03-22 19:35:20 [info     ] graph_retriever_no_section_found query='Does the Karnataka RERA extension of project registration contradict the central'
+2026-03-22 19:35:20 [info     ] vector_search_complete         jurisdiction=None results=5 top_k=5
+2026-03-22 19:35:20 [info     ] hybrid_retrieval_complete      graph_chunks=0 total=5 vector_chunks=5
+2026-03-22 19:35:20 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:35:21 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:35:21 [info     ] generator_node                 context_chunks=5 query='How does Karnataka handle extension of project registration compared to the cent'
+
+[92m19:35:21 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:21 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 39.245990459s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "39s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:21 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:21 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:21 [info     ] generator_citations_anchored   cited=2 total_context=5 unique_citations=2
+[92m19:35:21 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:21 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 38.619172552s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "38s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:21 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:22 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:22 [info     ] validator_node                 confidence=0.8 hallucinated=False
+PASS  (2.76s, conf=0.8, cit=2)
+  [MULTI_02] ... 2026-03-22 19:35:22 [info     ] classifier_node                query='What is the rate of interest payable on refunds under Tamil Nadu RERA rules?'
+[92m19:35:22 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:22 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 38.158988574s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "38s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:22 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:22 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:22 [info     ] classified                     query_type=fact_lookup rewritten='What is the interest rate on refunds under the Tamil Nadu Real Estate Regulatory'
+2026-03-22 19:35:22 [info     ] vector_retrieval_node          query='What is the interest rate on refunds under the Tamil Nadu Real Estate Regulatory' top_k=5
+Batches:   0%|          | 0/1 [00:00<?, ?it/s]Batches: 100%|██████████| 1/1 [00:00<00:00, 10.93it/s]2026-03-22 19:35:22 [info     ] vector_search_complete         jurisdiction=TAMIL_NADU results=5 top_k=5
+2026-03-22 19:35:22 [info     ] vector_retrieval_complete      base_results=5 results=5
+2026-03-22 19:35:22 [info     ] reranker_node                  unique_chunks=5
+2026-03-22 19:35:23 [info     ] reranker_complete              pinned=0 reranked=5
+2026-03-22 19:35:23 [info     ] generator_node                 context_chunks=5 query='What is the rate of interest payable on refunds under Tamil Nadu RERA rules?'
+
+[92m19:35:23 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:23 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 36.892805947s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "model": "gemini-3.1-flash-lite",\n              "location": "global"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "36s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:23 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:23 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:23 [warning  ] generator_cited_chunks_empty   fallback=all_chunks raw_indices=[]
+2026-03-22 19:35:23 [info     ] generator_citations_anchored   cited=5 total_context=5 unique_citations=5
+[92m19:35:23 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+INFO:LiteLLM:
+LiteLLM completion() model= gemini-3.1-flash-lite-preview; provider = gemini
+
+[1;31mGive Feedback / Get Help: https://github.com/BerriAI/litellm/issues/new[0m
+LiteLLM.Info: If you need to debug this error, use `litellm._turn_on_debug()'.
+
+2026-03-22 19:35:23 [warning  ] llm_fallback                   error='litellm.RateLimitError: litellm.RateLimitError: geminiException - {\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite\\nPlease retry in 36.489104652s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-3.1-flash-lite"\n            },\n            "quotaValue": "15"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "36s"\n      }\n    ]\n  }\n}\n' model=gemini/gemini-3.1-flash-lite-preview
+[92m19:35:23 - LiteLLM:INFO[0m: utils.py:3932 - 
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+INFO:LiteLLM:
+LiteLLM completion() model= llama-3.3-70b-versatile; provider = groq
+[92m19:35:24 - LiteLLM:INFO[0m: utils.py:1656 - Wrapper: Completed Call, calling success_handler
+INFO:LiteLLM:Wrapper: Completed Call, calling success_handler
+2026-03-22 19:35:24 [info     ] validator_node                 confidence=0.4 hallucinated=False
+PASS  (2.25s, conf=0.4, cit=5)
+
+======================================================================
+E2E Test Results: 12 PASS  0 FAIL  0 ERROR
+Avg confidence : 0.875
+Avg latency    : 10.31s
+======================================================================
+
+Full results → e2e_results.json

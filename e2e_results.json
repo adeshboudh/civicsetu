@@ -5,11 +5,11 @@
     "query_type": "fact_lookup",
     "type_match": true,
     "confidence": 1.0,
-    "citations": 5,
+    "citations": 4,
     "section_check": "4=OK",
-    "elapsed_s": 9.85,
+    "elapsed_s": 45.37,
     "error": null,
-    "answer_preview": "Under the RERA Act 2016, the promoter has the following obligations: 1) Create a web page on the Authority's website usi"
+    "answer_preview": "Under RERA, the obligations of a promoter include: 1) Registering the real estate project with the Real Estate Regulator"
   },
   {
     "label": "FACT_MH_01",
@@ -19,9 +19,9 @@
     "confidence": 1.0,
     "citations": 2,
     "section_check": "N/A",
-    "elapsed_s": 7.54,
+    "elapsed_s": 15.47,
     "error": null,
-    "answer_preview": "For the registration of an ongoing real estate project, the promoter must submit: 1) A declaration in Form 'B' as per Se"
+    "answer_preview": "For the registration of a real estate project, the promoter must furnish the information and documents specified under s"
   },
   {
     "label": "FACT_UP_01",
@@ -29,11 +29,11 @@
     "query_type": "fact_lookup",
     "type_match": true,
     "confidence": 1.0,
-    "citations": 2,
+    "citations": 1,
     "section_check": "N/A",
-    "elapsed_s": 7.05,
+    "elapsed_s": 7.1,
     "error": null,
-    "answer_preview": "Under Rule 16 of the Uttar Pradesh Real Estate (Regulation and Development) Rules 2016, any refund of monies along with "
+    "answer_preview": "Under Rule 16 of the Uttar Pradesh Real Estate (Regulation and Development) Rules, 2016, any refund of monies along with"
   },
   {
     "label": "FACT_KA_01",
@@ -43,9 +43,9 @@
     "confidence": 1.0,
     "citations": 1,
     "section_check": "N/A",
-    "elapsed_s": 6.87,
+    "elapsed_s": 5.03,
     "error": null,
-    "answer_preview": "The provided context mentions in Rule 8 that the registration of a project may be revoked under Section 7 of the Act. Ho"
+    "answer_preview": "The provided context does not explicitly list the specific grounds for the revocation of a project registration; it only"
   },
   {
     "label": "FACT_TN_01",
@@ -55,45 +55,45 @@
     "confidence": 1.0,
     "citations": 1,
     "section_check": "N/A",
-    "elapsed_s": 7.34,
+    "elapsed_s": 5.16,
     "error": null,
-    "answer_preview": "The provided context does not specify information that a real estate agent is required to provide directly to buyers. Un"
+    "answer_preview": "Under Rule 16 of the Tamil Nadu Real Estate (Regulation and Development) Rules 2017, a real estate agent is required to "
   },
   {
     "label": "XREF_01",
     "status": "PASS",
     "query_type": "cross_reference",
     "type_match": true,
-    "confidence": 0.8,
+    "confidence": 1.0,
     "citations": 1,
     "section_check": "18=OK",
-    "elapsed_s": 13.25,
+    "elapsed_s": 11.95,
     "error": null,
-    "answer_preview": "Section 18 of RERA states that if the promoter fails to complete or is unable to give possession of an apartment, plot o"
+    "answer_preview": "Under Section 18(1) of the RERA Act 2016, if a promoter fails to complete or is unable to give possession of an apartmen"
   },
   {
     "label": "XREF_02",
     "status": "PASS",
     "query_type": "cross_reference",
     "type_match": true,
-    "confidence": 0.8,
-    "citations": 3,
+    "confidence": 1.0,
+    "citations": 2,
     "section_check": "9=OK",
-    "elapsed_s": 6.56,
+    "elapsed_s": 9.06,
     "error": null,
-    "answer_preview": "The Maharashtra Real Estate (Regulation and Development) Rules 2017 and the Tamil Nadu Real Estate (Regulation and Devel"
+    "answer_preview": "The provided context identifies the following rules for the registration of real estate agents under Section 9 of the RE"
   },
   {
     "label": "XREF_MH_01",
     "status": "PASS",
     "query_type": "cross_reference",
     "type_match": true,
-    "confidence": 0.9,
-    "citations": 2,
+    "confidence": 0.4,
+    "citations": 3,
     "section_check": "N/A",
-    "elapsed_s": 2.0,
+    "elapsed_s": 4.56,
     "error": null,
-    "answer_preview": "MahaRERA rule 4 derives from section 4 of the central RERA Act, as both pertain to the application for registration of r"
+    "answer_preview": "The provided context does not explicitly state which specific rule in the Maharashtra Real Estate (Regulation and Develo"
   },
   {
     "label": "PENALTY_01",
@@ -103,44 +103,44 @@
     "confidence": 1.0,
     "citations": 5,
     "section_check": "N/A",
-    "elapsed_s": 8.1,
+    "elapsed_s": 11.91,
     "error": null,
-    "answer_preview": "The provided context does not contain information regarding the specific penalty for the non-registration of a real esta"
+    "answer_preview": "The provided context does not contain information regarding the penalty for non-registration of a real estate project by"
   },
   {
     "label": "PENALTY_02",
     "status": "PASS",
     "query_type": "penalty_lookup",
     "type_match": true,
-    "confidence": 1.0,
-    "citations": 4,
+    "confidence": 0.9,
+    "citations": 1,
     "section_check": "N/A",
-    "elapsed_s": 7.12,
+    "elapsed_s": 3.16,
     "error": null,
-    "answer_preview": "The provided context outlines requirements for registration under Section 3 and Section 4 of the RERA Act 2016, but it d"
+    "answer_preview": "The penalty for a promoter who fails to register under RERA is a penalty which may extend up to ten per cent. of the est"
   },
   {
     "label": "MULTI_01",
     "status": "PASS",
     "query_type": "conflict_detection",
     "type_match": false,
-    "confidence": 1.0,
+    "confidence": 0.8,
     "citations": 2,
     "section_check": "N/A",
-    "elapsed_s": 8.75,
+    "elapsed_s": 2.76,
     "error": null,
-    "answer_preview": "Under the Karnataka Real Estate (Regulation and Development) Rules 2017, Rule 7(3) specifies that the extension of a pro"
+    "answer_preview": "Karnataka handles extension of project registration under Section 7(3) of the Karnataka Real Estate (Regulation and Deve"
   },
   {
     "label": "MULTI_02",
     "status": "PASS",
     "query_type": "fact_lookup",
     "type_match": true,
-    "confidence": 1.0,
-    "citations": 1,
+    "confidence": 0.4,
+    "citations": 5,
     "section_check": "N/A",
-    "elapsed_s": 7.11,
+    "elapsed_s": 2.25,
     "error": null,
-    "answer_preview": "Under Rule 18 of the Tamil Nadu Real Estate (Regulation and Development) Rules 2017, the rate of interest payable is the"
+    "answer_preview": "The rate of interest payable on refunds under Tamil Nadu RERA rules is not explicitly specified in the provided context."
   }
 ]
