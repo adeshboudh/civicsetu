@@ -13,10 +13,7 @@ from civicsetu.config.settings import get_settings
 log = structlog.get_logger(__name__)
 settings = get_settings()
 
-app = FastAPI(title="CivicSetu API")
-
-@app.get("/", include_in_schema=False)
-async def landing_page():
+def get_landing_page_html() -> str:
     return """
 <!DOCTYPE html>
 <html lang="en">
@@ -72,7 +69,6 @@ async def landing_page():
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-    <!-- Header -->
     <header class="glass sticky top-0 z-50 border-b border-white/20">
         <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
             <div class="flex items-center gap-3">
@@ -101,7 +97,6 @@ async def landing_page():
     </header>
 
     <main class="max-w-6xl mx-auto px-6 py-12">
-        <!-- Hero Section -->
         <div class="text-center mb-12">
             <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
                 AI-Powered <span class="gradient-text">RERA Research</span>
@@ -112,7 +107,6 @@ async def landing_page():
             </p>
         </div>
 
-        <!-- Query Input Card -->
         <div class="glass rounded-3xl shadow-2xl p-8 mb-8 border border-white/30">
             <div class="flex flex-col lg:flex-row gap-4 mb-6">
                 <div class="flex-1 relative">
@@ -132,7 +126,7 @@ async def landing_page():
                         <option value="KARNATAKA">Karnataka</option>
                         <option value="TAMIL_NADU">Tamil Nadu</option>
                     </select>
-                    <button onclick="query()"
+                    <button onclick="doQuery()"
                             class="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-2xl font-semibold text-lg shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
@@ -142,7 +136,6 @@ async def landing_page():
                 </div>
             </div>
 
-            <!-- Example Queries -->
             <div class="flex flex-wrap gap-2">
                 <span class="text-sm text-gray-500 mr-2">Try:</span>
                 <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
@@ -160,9 +153,7 @@ async def landing_page():
             </div>
         </div>
 
-        <!-- Response Section -->
         <div id="response" class="hidden space-y-6">
-            <!-- Loading State -->
             <div id="loading" class="glass rounded-2xl p-12 text-center">
                 <div class="inline-flex items-center gap-3">
                     <div class="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
@@ -171,7 +162,6 @@ async def landing_page():
                 <p class="text-gray-400 text-sm mt-3">This may take 10-15 seconds</p>
             </div>
 
-            <!-- Answer Card -->
             <div id="answer-card" class="glass rounded-2xl shadow-xl p-8 slide-up hidden">
                 <div class="flex items-start gap-4 mb-6">
                     <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
@@ -185,12 +175,9 @@ async def landing_page():
                     </div>
                 </div>
                 <div id="answer" class="answer-body text-gray-800 text-lg leading-relaxed"></div>
-
-                <!-- Conflict & Amendment Warnings -->
                 <div id="warnings" class="mt-6 hidden"></div>
             </div>
 
-            <!-- Confidence & Stats -->
             <div id="stats-row" class="grid grid-cols-2 md:grid-cols-4 gap-4 hidden">
                 <div class="glass rounded-xl p-4 text-center">
                     <div id="confidence-value" class="text-2xl font-bold text-blue-600">--</div>
@@ -210,7 +197,6 @@ async def landing_page():
                 </div>
             </div>
 
-            <!-- Citations -->
             <div id="citations-card" class="glass rounded-2xl shadow-xl p-8 hidden">
                 <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                     <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -221,7 +207,6 @@ async def landing_page():
                 <div id="citations" class="grid gap-3"></div>
             </div>
 
-            <!-- Disclaimer -->
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                 <div class="flex items-start gap-2">
                     <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -235,7 +220,6 @@ async def landing_page():
             </div>
         </div>
 
-        <!-- Features Grid -->
         <div class="mt-16 grid md:grid-cols-3 gap-6">
             <div class="glass rounded-2xl p-6 border border-white/30 hover:shadow-lg transition-shadow">
                 <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center mb-4">
@@ -266,7 +250,6 @@ async def landing_page():
             </div>
         </div>
 
-        <!-- Document Coverage -->
         <div class="mt-12 glass rounded-2xl p-8 border border-white/30">
             <h3 class="text-lg font-semibold text-gray-800 mb-6">Document Coverage</h3>
             <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -309,7 +292,6 @@ async def landing_page():
         </div>
     </main>
 
-    <!-- Footer -->
     <footer class="mt-16 border-t border-gray-200 bg-white/50">
         <div class="max-w-6xl mx-auto px-6 py-8">
             <div class="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -330,18 +312,15 @@ async def landing_page():
             document.getElementById('query').focus();
         }
 
-        async function query() {
+        async function doQuery() {
             const queryText = document.getElementById('query').value.trim();
             if (!queryText) return;
 
             const jurisdiction = document.getElementById('jurisdiction').value;
             const responseDiv = document.getElementById('response');
 
-            // Show response area
             responseDiv.classList.remove('hidden');
-
-            // Show loading, hide other sections
-            document.getElementById('loading').classList.remove('hidden', 'hidden');
+            document.getElementById('loading').classList.remove('hidden');
             document.getElementById('answer-card').classList.add('hidden');
             document.getElementById('stats-row').classList.add('hidden');
             document.getElementById('citations-card').classList.add('hidden');
@@ -358,20 +337,11 @@ async def landing_page():
                 });
                 const data = await res.json();
 
-                // Hide loading
                 document.getElementById('loading').classList.add('hidden');
-
-                // Show answer card
-                const answerCard = document.getElementById('answer-card');
-                answerCard.classList.remove('hidden');
-
-                // Answer
-                document.getElementById('answer').innerHTML = data.answer.replace(/\\n/g, '<br>');
-
-                // Query type badge
+                document.getElementById('answer-card').classList.remove('hidden');
+                document.getElementById('answer').innerHTML = (data.answer || '').replace(/\\n/g, '<br>');
                 document.getElementById('query-type-badge').textContent = data.query_type_resolved || 'general';
 
-                // Show warnings if any
                 const warningsDiv = document.getElementById('warnings');
                 let warningsHtml = '';
                 if (data.conflict_warnings && data.conflict_warnings.length) {
@@ -385,12 +355,10 @@ async def landing_page():
                     warningsDiv.classList.remove('hidden');
                 }
 
-                // Show stats
                 document.getElementById('stats-row').classList.remove('hidden');
-                document.getElementById('confidence-value').textContent = (data.confidence_score * 100).toFixed(0) + '%';
+                document.getElementById('confidence-value').textContent = ((data.confidence_score || 0) * 100).toFixed(0) + '%';
                 document.getElementById('citations-count').textContent = data.citations ? data.citations.length : 0;
 
-                // Citations
                 const citationsCard = document.getElementById('citations-card');
                 const citationsDiv = document.getElementById('citations');
                 if (data.citations && data.citations.length) {
@@ -416,14 +384,14 @@ async def landing_page():
             }
         }
 
-        // Enter key support
         document.getElementById('query').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') query();
+            if (e.key === 'Enter') doQuery();
         });
     </script>
 </body>
 </html>
 """
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -449,6 +417,10 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+
+    @app.get("/", include_in_schema=False)
+    async def landing_page():
+        return get_landing_page_html()
 
     app.add_middleware(
         CORSMiddleware,
