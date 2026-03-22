@@ -8,18 +8,21 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install uv
 
-COPY pyproject.toml uv.lock ./
+# Copy minimal files first (for caching)
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
+# Now uv sync can find README.md
 RUN uv sync --no-dev
 
-# Bake model into image — eliminates cold start on first request
+# Bake model into image — eliminates cold start
 RUN uv run python -c "\
     from sentence_transformers import SentenceTransformer; \
     SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True); \
     print('Model cached.') \
 "
 
+# Copy remaining files
 COPY . .
 
 EXPOSE 7860
