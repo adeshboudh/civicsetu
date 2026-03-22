@@ -129,15 +129,16 @@ make docker-down                        # Tear down containers
 
 ## Documents ingested
 
-| Document | Jurisdiction | Sections |
-| :-- | :-- | :-- |
-| RERA Act 2016 | Central | 224 |
-| Maharashtra Real Estate Rules 2017 | Maharashtra | 214 |
-| UP RERA Rules 2016 | Uttar Pradesh | — |
-| Karnataka RERA Rules 2017 | Karnataka | — |
-| Tamil Nadu RERA Rules 2017 | Tamil Nadu | — |
+| Document                           | Jurisdiction  | Sections |
+| ---------------------------------- | ------------- | -------- |
+| RERA Act 2016                      | Central       | 224      |
+| Maharashtra Real Estate Rules 2017 | Maharashtra   | 214      |
+| UP RERA Rules 2016                 | Uttar Pradesh | 170      |
+| Karnataka RERA Rules 2017          | Karnataka     | 235      |
+| Tamil Nadu RERA Rules 2017         | Tamil Nadu    | 157      |
 
-Graph: 438+ Section nodes, 171 REFERENCES edges, 18+ DERIVED_FROM edges.
+Total chunks: 1203.
+Graph: 2090 Section nodes, 1297 HAS_SECTION edges, 933 REFERENCES edges, 91 DERIVED_FROM edges.
 
 
 ---
@@ -168,7 +169,7 @@ Graph: 438+ Section nodes, 171 REFERENCES edges, 18+ DERIVED_FROM edges.
 | 2 | MahaRERA Rules 2017, multi-jurisdiction | ✅ Complete |
 | 3 | DERIVED_FROM edges, cross-jurisdiction graph | ✅ Complete |
 | 4 | Multi-state expansion (UP, TN, Karnataka) | ✅ Complete |
-| 5 | Open-source SaaS, UI, public API | 🔄 In Progress |
+| 5 | Open-source SaaS, UI, public API | ✅ Complete |
 
 
 ---
