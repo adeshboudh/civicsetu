@@ -44,6 +44,7 @@ dependencies = [
     "tenacity>=8.3.0",
     "structlog>=24.0.0",
     "einops>=0.8.2",
+    "huggingface-hub[cli]>=1.7.1",
 ]
 
 [project.optional-dependencies]
