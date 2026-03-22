@@ -14,10 +14,10 @@ COPY src/ ./src/
 RUN uv sync --no-dev
 
 # Bake model into image — eliminates cold start on first request
-RUN uv run python -c "
-from sentence_transformers import SentenceTransformer
-SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)
-print('Model cached.')
+RUN uv run python -c "\
+    from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True); \
+    print('Model cached.') \
 "
 
 COPY . .
