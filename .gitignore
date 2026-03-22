@@ -23,3 +23,8 @@ __MACOSX/
 *.onnx
 *.egg-info/
 .pytest_cache/
+
+# Local caches / models
+.cache/
+models/
+**/*.onnx
