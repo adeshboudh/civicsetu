@@ -3,24 +3,27 @@
 Open-source RAG system for querying Indian civic and legal documents — with accurate
 citations, cross-reference traversal, and conflict detection between laws.
 
-**Current status:** Phase 2 complete — RERA Act 2016 (Central) + Maharashtra Rules 2017.
+**Current status:** Phase 4 complete — 5-jurisdiction RERA coverage (Central + MH + UP + KA + TN),
+cross-jurisdiction graph edges live, 12/12 E2E passing.
 
 ---
 
 ## What it does
 
-Ask a plain-English question about RERA or Maharashtra real estate rules. Get a cited,
-structured answer with section references, confidence score, and a legal disclaimer.
+Ask a plain-English question about RERA. Get a cited, structured answer with section
+references, confidence score, and a legal disclaimer — grounded in real legal text.
 
 ```
 
-Query: "What must a promoter disclose before selling a flat?"
+Query:  "Which state rules implement section 9 of RERA on agent registration?"
 
-Answer: "Under Section 11(3) of RERA Act 2016, a promoter must disclose...
-Rule 3(2) of Maharashtra Rules further requires..."
+Answer: "Section 9 of the RERA Act 2016 governs agent registration at the central level.
+Rule 11 of Maharashtra Rules 2017 and Rule 8 of Karnataka RERA Rules derive
+from Section 9, specifying application procedures and timelines..."
 
-Citations: [Section 11, RERA Act 2016], [Rule 3(2), Maharashtra Rules 2017]
-Confidence: 0.95 (high)
+Citations: [Section 9, RERA Act 2016], [Rule 11, Maharashtra Rules 2017],
+[Rule 8, Karnataka RERA Rules]
+Confidence: 0.96 (high)
 
 ```
 
@@ -38,7 +41,7 @@ Ingestion Pipeline (PDF → chunks → embeddings → graph)
 
 Three stores per query:
 - **pgvector** — semantic similarity (fact lookups)
-- **Neo4j** — section graph traversal (cross-references, penalties)
+- **Neo4j** — section graph traversal (cross-references, DERIVED_FROM edges)
 - **PostgreSQL** — full chunk text + metadata
 
 Full design: [HLD.md](docs/HLD.md) | [LLD.md](docs/LLD.md)
@@ -50,47 +53,32 @@ Full design: [HLD.md](docs/HLD.md) | [LLD.md](docs/LLD.md)
 ### Prerequisites
 
 - Docker + Docker Compose
-- [Ollama](https://ollama.ai) running locally
 - `uv` package manager
+- One of: Gemini API key (free tier) or Groq API key (free tier)
 
-### 1. Start infrastructure
+> **No Ollama required.** Embeddings run locally via `sentence-transformers`.
+> First run downloads `nomic-embed-text-v1.5` (~550MB) from HuggingFace and caches it.
 
-```bash
-docker compose up -d          # PostgreSQL + pgvector + Neo4j
-ollama pull nomic-embed-text  # embedding model
-```
-
-
-### 2. Configure environment
+### Setup
 
 ```bash
+# 1. Clone and install
+git clone https://github.com/yourname/civicsetu.git && cd civicsetu
+make install
+
+# 2. Configure secrets
 cp .env.example .env
-# Set GEMINI_API_KEY (or GROQ_API_KEY for backup)
-# Neo4j and Postgres defaults work out of the box with Docker Compose
+# Set GEMINI_API_KEY and/or GROQ_API_KEY — everything else has working defaults
+
+# 3. Start infrastructure
+make docker-up
+
+# 4. Ingest all 5 jurisdictions
+make ingest
+
+# 5. Start the API
+make serve
 ```
-
-
-### 3. Install dependencies
-
-```bash
-uv sync
-```
-
-
-### 4. Ingest documents
-
-```bash
-uv run python scripts/ingest_phase0.py   # RERA Act 2016
-uv run python scripts/ingest_phase2.py   # Maharashtra Rules 2017
-```
-
-
-### 5. Run the API
-
-```bash
-uv run uvicorn civicsetu.api.main:app --reload
-```
-
 
 ### 6. Query
 
@@ -100,15 +88,34 @@ curl -X POST http://localhost:8000/api/v1/query \
   -d '{"query": "What are the penalties for a promoter who delays possession?"}'
 ```
 
+> First request will be slow (~30–45s) while the embedding model loads into memory.
+> Subsequent requests run at 5–15s.
+
+### Other useful commands
+
+```bash
+make e2e        # Run 12-case E2E benchmark across all 5 jurisdictions
+make test       # Run unit tests
+make lint       # Ruff linter
+make typecheck  # mypy
+
+make ingest --jurisdiction MAHARASHTRA  # Re-ingest a single jurisdiction
+make docker-down                        # Tear down containers
+```
 
 ---
 
 ## Documents ingested
 
-| Document | Jurisdiction | Chunks | Sections |
-| :-- | :-- | :-- | :-- |
-| RERA Act 2016 | Central | 224 | 92 |
-| Maharashtra Real Estate Rules 2017 | Maharashtra | 214 | 44 |
+| Document | Jurisdiction | Sections |
+| :-- | :-- | :-- |
+| RERA Act 2016 | Central | 224 |
+| Maharashtra Real Estate Rules 2017 | Maharashtra | 214 |
+| UP RERA Rules 2016 | Uttar Pradesh | — |
+| Karnataka RERA Rules 2017 | Karnataka | — |
+| Tamil Nadu RERA Rules 2017 | Tamil Nadu | — |
+
+Graph: 438+ Section nodes, 171 REFERENCES edges, 18+ DERIVED_FROM edges.
 
 
 ---
@@ -120,7 +127,7 @@ curl -X POST http://localhost:8000/api/v1/query \
 | API | FastAPI + Uvicorn |
 | Orchestration | LangGraph StateGraph |
 | LLM routing | LiteLLM (Gemini → Groq → OpenRouter) |
-| Embeddings | nomic-embed-text via Ollama (local) |
+| Embeddings | nomic-embed-text-v1.5 via sentence-transformers (local) |
 | Vector DB | pgvector + HNSW index |
 | Graph DB | Neo4j Community |
 | Relational | PostgreSQL + SQLAlchemy |
@@ -134,12 +141,12 @@ curl -X POST http://localhost:8000/api/v1/query \
 
 | Phase | Scope | Status |
 | :-- | :-- | :-- |
-| 0 | RERA Act 2016, vector RAG, FastAPI | Complete |
-| 1 | Neo4j graph, cross-reference queries | Complete |
-| 2 | MahaRERA Rules 2017, multi-jurisdiction | Complete |
-| 3 | DERIVED_FROM edges, conflict detection | Next |
-| 4 | Multi-state expansion (UP, TN, Karnataka) | Planned |
-| 5 | Open-source SaaS, UI, public API | Planned |
+| 0 | RERA Act 2016, vector RAG, FastAPI | ✅ Complete |
+| 1 | Neo4j graph, cross-reference queries | ✅ Complete |
+| 2 | MahaRERA Rules 2017, multi-jurisdiction | ✅ Complete |
+| 3 | DERIVED_FROM edges, cross-jurisdiction graph | ✅ Complete |
+| 4 | Multi-state expansion (UP, TN, Karnataka) | ✅ Complete |
+| 5 | Open-source SaaS, UI, public API | 🔄 In Progress |
 
 
 ---

@@ -1,18 +1,29 @@
-.PHONY: help install dev serve ingest lint format typecheck test clean docker-up docker-down
+.PHONY: help install dev serve ingest lint format typecheck test test-cov e2e docker-up docker-down clean
 
 help:
 	@echo "CivicSetu — available commands:"
-	@echo "  make install      Install all dependencies"
-	@echo "  make dev          Install with dev + eval extras"
-	@echo "  make serve        Start FastAPI server (hot reload)"
-	@echo "  make ingest       Run Phase 0 ingestion (RERA Act 2016)"
-	@echo "  make lint         Run ruff linter"
-	@echo "  make format       Run ruff formatter"
-	@echo "  make typecheck    Run mypy"
-	@echo "  make test         Run test suite"
-	@echo "  make docker-up    Start Postgres + pgvector"
-	@echo "  make docker-down  Stop all containers"
-	@echo "  make clean        Remove __pycache__ and .pyc files"
+	@echo ""
+	@echo "  Setup:"
+	@echo "    make install      Install all dependencies"
+	@echo "    make dev          Install with dev + eval extras"
+	@echo ""
+	@echo "  Run:"
+	@echo "    make docker-up    Start PostgreSQL + pgvector + Neo4j"
+	@echo "    make docker-down  Stop all containers"
+	@echo "    make serve        Start FastAPI server (hot reload)"
+	@echo ""
+	@echo "  Data:"
+	@echo "    make ingest       Ingest all 5 jurisdictions (Central, MH, UP, KA, TN)"
+	@echo ""
+	@echo "  Quality:"
+	@echo "    make lint         Run ruff linter"
+	@echo "    make format       Run ruff formatter"
+	@echo "    make typecheck    Run mypy"
+	@echo "    make test         Run unit test suite"
+	@echo "    make test-cov     Run tests with coverage report"
+	@echo "    make e2e          Run 12-case E2E query benchmark"
+	@echo ""
+	@echo "    make clean        Remove __pycache__ and .pyc files"
 
 install:
 	uv sync
@@ -28,7 +39,7 @@ serve:
 		--log-level info
 
 ingest:
-	uv run python scripts/ingest_phase0.py
+	uv run python scripts/ingest.py
 
 lint:
 	uv run ruff check src/ tests/
@@ -45,9 +56,12 @@ test:
 test-cov:
 	uv run pytest tests/ --cov=civicsetu --cov-report=term-missing -q
 
+e2e:
+	PYTHONUTF8=1 uv run python scripts/test_e2e_queries.py
+
 docker-up:
 	cd infra && docker compose up -d
-	@echo "Waiting for Postgres healthcheck..."
+	@echo "Waiting for services to be healthy..."
 	@sleep 5
 	@docker compose -f infra/docker-compose.yml ps
 
