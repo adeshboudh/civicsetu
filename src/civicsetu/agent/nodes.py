@@ -9,7 +9,7 @@ import structlog
 from civicsetu.agent.state import CivicSetuState
 from civicsetu.config.settings import get_settings
 from civicsetu.ingestion.embedder import Embedder
-from civicsetu.models.enums import QueryType
+from civicsetu.models.enums import QueryType, Jurisdiction
 from civicsetu.models.schemas import Citation, RetrievedChunk
 from civicsetu.prompts.classifier import CLASSIFIER_PROMPT
 from civicsetu.prompts.generator import GENERATOR_PROMPT
@@ -98,11 +98,17 @@ def classifier_node(state: CivicSetuState) -> dict:
 
 # ── Node 2: Vector Retriever ───────────────────────────────────────────────────
 
+# ── Node 2: Vector Retriever ───────────────────────────────────────────────────
+
 def vector_retrieval_node(state: CivicSetuState) -> dict:
     """
     Embeds the rewritten query and retrieves top_k chunks from pgvector.
-    Returns: retrieved_chunks (appended via Annotated[list, operator.add])
+    After similarity search, expands any base section hit into its full
+    sub-chunk family (e.g. S11 → S11 + S11(3) ... S11(22)) so the reranker
+    can pick the most relevant sub-sections rather than only the first chunk.
+    Returns: retrieved_chunks
     """
+    import re
     query = state.get("rewritten_query") or state["query"]
     top_k = state.get("top_k", 5)
     jurisdiction = state.get("jurisdiction_filter")
@@ -113,7 +119,7 @@ def vector_retrieval_node(state: CivicSetuState) -> dict:
 
     async def _retrieve():
         async with AsyncSessionLocal() as session:
-            return await VectorStore.similarity_search(
+            results = await VectorStore.similarity_search(
                 session=session,
                 query_embedding=query_embedding,
                 top_k=top_k,
@@ -121,9 +127,39 @@ def vector_retrieval_node(state: CivicSetuState) -> dict:
                 active_only=True,
             )
 
+            # Expand base section hits into full sub-chunk families.
+            # S11 scores 0.735 but only contains subsection (1) — the
+            # remaining 17 sub-chunks score too low to surface individually.
+            # Fetching the family gives the reranker the full section content.
+            seen_ids: set[str] = {str(r.chunk.chunk_id) for r in results}
+            expanded: list[RetrievedChunk] = list(results)
+
+            for rc in results[:1]:
+                sid = rc.chunk.section_id
+                if not re.search(r'\(', str(sid)):  # base section only — skip sub-chunks
+                    jur = Jurisdiction(rc.chunk.jurisdiction)
+                    family = await VectorStore.get_section_family(
+                        session=session, section_id=sid, jurisdiction=jur
+                    )
+                    for fc in family:
+                        cid = str(fc.chunk.chunk_id)
+                        if cid not in seen_ids:
+                            seen_ids.add(cid)
+                            expanded.append(fc)
+
+            _MAX_VECTOR_EXPANDED = 25
+            expanded = expanded[:_MAX_VECTOR_EXPANDED]
+
+            log.info(
+                "vector_retrieval_complete",
+                base_results=len(results),
+                results=len(expanded),
+            )
+            return expanded
+
     chunks = asyncio.run(_retrieve())
-    log.info("vector_retrieval_complete", results=len(chunks))
     return {"retrieved_chunks": chunks}
+
 
 def graph_retrieval_node(state: CivicSetuState) -> dict:
     """
@@ -168,6 +204,15 @@ def graph_retrieval_node(state: CivicSetuState) -> dict:
         chunks = asyncio.run(_vector_fallback())
         log.info("graph_fallback_complete", results=len(chunks))
 
+    _MAX_GRAPH_CHUNKS = 25
+    if len(chunks) > _MAX_GRAPH_CHUNKS:
+        log.warning(
+            "graph_retrieval_capped",
+            original=len(chunks),
+            capped=_MAX_GRAPH_CHUNKS,
+        )
+        chunks = chunks[:_MAX_GRAPH_CHUNKS]
+        
     return {"retrieved_chunks": chunks}
     
 # ── Node 3: Reranker ───────────────────────────────────────────────────────────
@@ -350,36 +395,47 @@ def generator_node(state: CivicSetuState) -> dict:
 # ── Node 5: Validator ──────────────────────────────────────────────────────────
 
 def validator_node(state: CivicSetuState) -> dict:
-    """
-    Checks if the answer is grounded in the retrieved context.
-    Sets hallucination_flag=True if answer makes claims not in context.
-    """
     answer = state.get("raw_response", "")
     chunks = state.get("reranked_chunks", [])
 
     if not answer or not chunks:
-        return {"hallucination_flag": False}
+        return {"hallucination_flag": False, "confidence_score": 0.5}
 
-    context = " ".join(c.chunk.text for c in chunks)
-    prompt = VALIDATOR_PROMPT.format(answer=answer, context=context)
-    system = "You are a factual grounding checker. Respond with JSON only."
+    # Build context with section metadata — same format as generator_node
+    # so the validator can verify citations like "Section 11(1)" actually exist
+    context_parts = []
+    for i, rc in enumerate(chunks, 1):
+        c = rc.chunk
+        context_parts.append(
+            f"[{i}] {c.doc_name} — {c.section_id}: {c.section_title}\n"
+            f"Effective: {c.effective_date}\n"
+            f"{c.text}\n"
+        )
+    context = "\n---\n".join(context_parts)
+
+    query_type = str(state.get("query_type", "fact_lookup"))
+    prompt = VALIDATOR_PROMPT.format(
+        query_type=query_type, answer=answer, context=context
+    )
+    system = "You are a factual grounding scorer. Respond with JSON only."
 
     try:
         raw = _llm_call(prompt, system)
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         result = json.loads(raw)
-        hallucinated = result.get("hallucination_detected", False)
-        updated_score = result.get("confidence_score", state.get("confidence_score", 0.5))
+        updated_score = float(result.get("confidence_score", 0.5))
+        hallucinated = updated_score < 0.3
     except Exception as e:
         log.warning("validator_failed", error=str(e))
-        hallucinated = False
         updated_score = state.get("confidence_score", 0.5)
+        hallucinated = False
 
-    log.info("validator_node", hallucinated=hallucinated, confidence=updated_score)
+    log.info("validator_node", confidence=updated_score, hallucinated=hallucinated)
     return {
         "hallucination_flag": hallucinated,
-        "confidence_score": float(updated_score),
+        "confidence_score": updated_score,
     }
+
 
 def hybrid_retrieval_node(state: CivicSetuState) -> dict:
     """

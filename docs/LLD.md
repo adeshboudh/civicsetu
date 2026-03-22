@@ -1,6 +1,6 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 0.5.0 — Phase 6 Complete (4-State Ingestion)
+**Version:** 0.5.0 — Phase 4 Complete (4-State Ingestion)
 **Last Updated:** March 2026
 
 ---
@@ -437,3 +437,50 @@ Citation:
 | UTTAR_PRADESH | up-rera.in/pdf/rera.pdf | pages 25–52 are forms | max_pages=24 |
 | KARNATAKA | naredco.in (mirror) | Official PDF fully scanned (19MB) | NAREDCO born-digital |
 | TAMIL_NADU | cms.tn.gov.in | pages 16–101 are Forms A–O | max_pages=15 |
+
+## 11. Agent Pipeline — Bug Fixes (2026-03-22)
+
+Three production bugs fixed after 12-case E2E suite. All verified: 0 retries, 0
+hallucinations, avg latency 7.6s.
+
+### Fix 1 — `vector_store.py::get_section_family` — Pydantic crash on SELECT *
+
+`SELECT *` returned `embedding` as a raw string; Pydantic `list[float]` validation
+failed. Fix: explicit column projection, `embedding=None` on all returned chunks.
+Matches every other `VectorStore` method.
+
+### Fix 2 — `nodes.py::vector_retrieval_node` — Reranker blowup on section expansion
+
+Section family expansion ran on all 5 similarity hits → up to 121 chunks → FlashRank
+cross-encoder serial scoring → 65s reranker time. Fix: expand top-1 hit only; hard
+cap at 25 chunks before reranker.
+
+```python
+# Expand only the single best similarity hit
+for rc in results[:1]:
+    ...family expansion...
+
+expanded = expanded[:25]  # hard safety cap
+```
+
+
+### Fix 3 — `nodes.py::validator_node` — False hallucination flag
+
+Validator built context as raw `chunk.text` joined string. Generator answer cites
+`"Section 11(1)"` but raw text has no section number → validator scores 0.2 →
+`hallucinated=True` → spurious retry loops (7 retries across 12 tests).
+
+Fix: mirror generator's numbered context block `[i] doc — section_id: title\ntext`.
+Validator can now match cited section numbers to source context.
+
+### E2E Regression Results (post-fix)
+
+| Metric | Pre-fix | Post-fix |
+| :-- | :-- | :-- |
+| Avg latency | 19.6s | **7.6s** |
+| Max latency | 87.1s | **13.3s** |
+| Avg confidence | 0.908 | **0.958** |
+| Total retries | 7 | **0** |
+| Slow (>20s) | 3 | **0** |
+| Low conf (<0.7) | 2 | **0** |
+| Pass rate | 12/12 | **12/12** |

@@ -1,8 +1,8 @@
 # CivicSetu — High Level Design (HLD)
 
-**Version:** 0.4.0 — Phase 3 Complete
-**Last Updated:** March 2026
-**Status:** Phase 3 Complete — Cross-jurisdiction graph edges live
++ **Version:** 0.5.0 — Phase 4 Complete
++ **Status:** Phase 4 Complete — Multi-state RERA (Central + MH + UP + KA + TN)
++ **Current Scope:** RERA Act 2016 (Central) + Maharashtra, Uttar Pradesh, Karnataka, Tamil Nadu Rules.
 
 ---
 
@@ -178,17 +178,18 @@ Output: {
 | 1     | Neo4j graph, cross-reference queries           | ✅ Complete     |
 | 2     | MahaRERA Rules 2017, multi-jurisdiction        | ✅ Complete     |
 | 3     | DERIVED_FROM edges, cross-jurisdiction graph   | ✅ Complete     |
-| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | Next            |
-| 5     | Open-source SaaS, UI, public API               | Planned         |
+| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | ✅ Complete     |
+| 5     | Agent pipeline hardening, E2E test suite       | ✅ Complete     |
+| 6     | Open-source SaaS, UI, public API               | Planned         |
 
 ---
 
 ## 8. Non-Functional Requirements
 
-| Requirement        | Target                               | Current Status                  |
-|--------------------|--------------------------------------|---------------------------------|
-| Response latency   | < 10s per query                      | ~5–8s (local embedding)         |
-| Citation accuracy  | 100% — never answer without citation | Enforced by schema              |
-| Hallucination rate | < 5%                                 | Validator node + confidence gate|
-| Cost               | $0 for dev/staging                   | All free tier                   |
-| Portability        | Runs on any machine with Docker      | Docker Compose                  |
+| Requirement        | Target                               | Current Status                         |
+|--------------------|--------------------------------------|----------------------------------------|
+| Response latency   | < 10s per query                      | 7.6s avg — 12/12 E2E PASS (2026-03-22) |
+| Citation accuracy  | 100% — never answer without citation | Enforced by schema                     |
+| Hallucination rate | < 5%                                 | Validator node + confidence gate       |
+| Cost               | $0 for dev/staging                   | All free tier                          |
+| Portability        | Runs on any machine with Docker      | Docker Compose                         |

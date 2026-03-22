@@ -167,3 +167,54 @@ class VectorStore:
         count = result.rowcount
         log.info("deleted_chunks", doc_id=str(doc_id), count=count)
         return count
+    
+    @staticmethod
+    async def get_section_family(
+        session: AsyncSession,
+        section_id: str,
+        jurisdiction: Jurisdiction,
+    ) -> list[RetrievedChunk]:
+        import re
+        if re.search(r'\(', section_id):
+            return []
+
+        result = await session.execute(
+            text("""
+                SELECT
+                    chunk_id, doc_id, jurisdiction, doc_type, doc_name,
+                    section_id, section_title, section_hierarchy,
+                    text, effective_date, superseded_by, status,
+                    source_url, page_number
+                FROM legal_chunks
+                WHERE jurisdiction = :jur
+                AND (section_id = :sid OR section_id LIKE :pattern)
+                AND status = 'active'
+                ORDER BY section_id
+            """),
+            {"jur": jurisdiction.value, "sid": section_id, "pattern": f"{section_id}(%"},
+        )
+        rows = result.fetchall()
+        return [
+            RetrievedChunk(
+                chunk=LegalChunk(
+                    chunk_id=row.chunk_id,
+                    doc_id=row.doc_id,
+                    jurisdiction=row.jurisdiction,
+                    doc_type=row.doc_type,
+                    doc_name=row.doc_name,
+                    section_id=row.section_id,
+                    section_title=row.section_title,
+                    section_hierarchy=list(row.section_hierarchy),
+                    text=row.text,
+                    effective_date=row.effective_date,
+                    superseded_by=row.superseded_by,
+                    status=row.status,
+                    source_url=row.source_url,
+                    page_number=row.page_number,
+                    embedding=None,  # never return raw vectors to callers
+                ),
+                retrieval_source="vector",
+            )
+            for row in rows
+        ]
+

@@ -25,24 +25,23 @@ def route_after_classifier(state: CivicSetuState) -> str:
     return "vector_retrieval"
 
 
-
 def route_after_validator(state: CivicSetuState) -> str:
     """
     After validation:
-    - Hallucination detected + retries remaining → retry from classifier
-    - Confidence too low + retries remaining → retry from classifier
-    - Otherwise → end
+    - No chunks retrieved → end immediately (retry won't help)
+    - Genuinely bad answer (hallucinated AND conf < 0.3) AND retries left → retry
+    - Everything else → end (confidence score surfaces in response)
     """
-    hallucinated = state.get("hallucination_flag", False)
     confidence = state.get("confidence_score", 1.0)
     retry_count = state.get("retry_count", 0)
     has_chunks = len(state.get("reranked_chunks", [])) > 0
 
-    # Don't retry if retrieval returned nothing — retrying won't help
     if not has_chunks:
         return "end"
 
-    if (hallucinated or confidence < 0.50) and retry_count < 2:
+    # Only retry if BOTH conditions true — avoids burning LLM calls on
+    # synthesis answers the validator misreads as hallucination
+    if confidence < 0.2 and retry_count < 2:
         return "retry"
 
     return "end"
