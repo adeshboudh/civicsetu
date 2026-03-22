@@ -22,6 +22,12 @@ def get_landing_page_html() -> str:
     <title>CivicSetu — AI-Powered RERA Research</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Open-source RAG system for querying Indian civic and legal documents with accurate citations and cross-reference traversal.">
+    <script>
+        // Tailwind dark mode: class-based
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,6 +45,9 @@ def get_landing_page_html() -> str:
             background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+        }
+        .dark .glass {
+            background: rgba(30, 41, 59, 0.85);
         }
         .pulse-ring {
             animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -59,7 +68,7 @@ def get_landing_page_html() -> str:
         }
         .citation-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
         }
         .example-chip {
             transition: all 0.2s ease;
@@ -67,10 +76,34 @@ def get_landing_page_html() -> str:
         .example-chip:hover {
             transform: scale(1.02);
         }
+        /* Theme toggle button */
+        .theme-toggle {
+            position: relative;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: transparent;
+            border: none;
+        }
+        .theme-toggle:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        .dark .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .theme-toggle .sun { display: block; }
+        .theme-toggle .moon { display: none; }
+        .dark .theme-toggle .sun { display: none; }
+        .dark .theme-toggle .moon { display: block; }
     </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-    <header class="glass sticky top-0 z-50 border-b border-white/20">
+<body class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950 transition-colors duration-300">
+    <header class="glass sticky top-0 z-50 border-b border-white/20 dark:border-slate-700/20">
         <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center shadow-lg">
@@ -80,15 +113,25 @@ def get_landing_page_html() -> str:
                 </div>
                 <div>
                     <h1 class="text-xl font-bold gradient-text">CivicSetu</h1>
-                    <p class="text-xs text-gray-500">RERA Research Engine</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">RERA Research Engine</p>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <span class="hidden sm:inline-flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full">
-                    <span class="w-2 h-2 bg-green-500 rounded-full pulse-ring"></span>
+            <div class="flex items-center gap-3">
+                <span class="hidden sm:inline-flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-full">
+                    <span class="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full pulse-ring"></span>
                     Live
                 </span>
-                <a href="https://github.com/adeshboudh/civicsetu" target="_blank" class="text-gray-600 hover:text-gray-900 transition-colors">
+                <button id="theme-toggle" class="theme-toggle text-gray-600 dark:text-gray-300" aria-label="Toggle dark mode">
+                    <!-- Sun (shown in dark mode to switch to light) -->
+                    <svg class="sun w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                    <!-- Moon (shown in light mode to switch to dark) -->
+                    <svg class="moon w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                    </svg>
+                </button>
+                <a href="https://github.com/adeshboudh/civicsetu" target="_blank" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
                     <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                         <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/>
                     </svg>
@@ -99,27 +142,27 @@ def get_landing_page_html() -> str:
 
     <main class="max-w-6xl mx-auto px-6 py-12">
         <div class="text-center mb-12">
-            <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            <h2 class="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
                 AI-Powered <span class="gradient-text">RERA Research</span>
             </h2>
-            <p class="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            <p class="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
                 Query Indian real estate regulations across 5 jurisdictions. Get cited, structured answers
                 with cross-reference traversal and conflict detection — powered by LangGraph agents.
             </p>
         </div>
 
-        <div class="glass rounded-3xl shadow-2xl p-8 mb-8 border border-white/30">
+        <div class="glass rounded-3xl shadow-2xl p-8 mb-8 border border-white/30 dark:border-slate-700/30">
             <div class="flex flex-col lg:flex-row gap-4 mb-6">
                 <div class="flex-1 relative">
-                    <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                     <input id="query" type="text"
                            placeholder="Ask about RERA: promoter obligations, agent registration, penalties..."
-                           class="w-full pl-12 pr-4 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all">
+                           class="w-full pl-12 pr-4 py-4 text-lg border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-2xl focus:border-blue-400 dark:focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900 transition-all">
                 </div>
                 <div class="flex gap-3">
-                    <select id="jurisdiction" class="px-4 py-4 text-gray-700 bg-white border-2 border-gray-200 rounded-2xl focus:border-blue-400 focus:outline-none cursor-pointer">
+                    <select id="jurisdiction" class="px-4 py-4 text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-gray-600 rounded-2xl focus:border-blue-400 dark:focus:border-blue-400 focus:outline-none cursor-pointer">
                         <option value="">All India</option>
                         <option value="CENTRAL">RERA Act (Central)</option>
                         <option value="MAHARASHTRA">Maharashtra</option>
@@ -138,17 +181,17 @@ def get_landing_page_html() -> str:
             </div>
 
             <div class="flex flex-wrap gap-2">
-                <span class="text-sm text-gray-500 mr-2">Try:</span>
-                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-full border border-blue-200">
+                <span class="text-sm text-gray-500 dark:text-gray-400 mr-2">Try:</span>
+                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-full border border-blue-200 dark:border-blue-700">
                     What are promoter obligations under RERA?
                 </button>
-                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-purple-50 hover:bg-purple-100 text-purple-700 px-4 py-2 rounded-full border border-purple-200">
+                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 px-4 py-2 rounded-full border border-purple-200 dark:border-purple-700">
                     Penalties for delayed possession
                 </button>
-                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-green-50 hover:bg-green-100 text-green-700 px-4 py-2 rounded-full border border-green-200">
+                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 text-green-700 dark:text-green-300 px-4 py-2 rounded-full border border-green-200 dark:border-green-700">
                     Agent registration requirements
                 </button>
-                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-amber-50 hover:bg-amber-100 text-amber-700 px-4 py-2 rounded-full border border-amber-200">
+                <button onclick="setQuery(this.textContent)" class="example-chip text-sm bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 px-4 py-2 rounded-full border border-amber-200 dark:border-amber-700">
                     Complaint filing process
                 </button>
             </div>
@@ -157,10 +200,10 @@ def get_landing_page_html() -> str:
         <div id="response" class="hidden space-y-6">
             <div id="loading" class="glass rounded-2xl p-12 text-center">
                 <div class="inline-flex items-center gap-3">
-                    <div class="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                    <span class="text-gray-600 text-lg">Analyzing RERA regulations...</span>
+                    <div class="w-10 h-10 border-4 border-blue-200 dark:border-slate-600 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin"></div>
+                    <span class="text-gray-600 dark:text-gray-300 text-lg">Analyzing RERA regulations...</span>
                 </div>
-                <p class="text-gray-400 text-sm mt-3">This may take 10-15 seconds</p>
+                <p class="text-gray-400 dark:text-gray-500 text-sm mt-3">This may take 10-15 seconds</p>
             </div>
 
             <div id="answer-card" class="glass rounded-2xl shadow-xl p-8 slide-up hidden">
@@ -171,36 +214,36 @@ def get_landing_page_html() -> str:
                         </svg>
                     </div>
                     <div class="flex-1">
-                        <h3 class="text-lg font-semibold text-gray-800 mb-1">Answer</h3>
-                        <div id="query-type-badge" class="inline-block text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full"></div>
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-1">Answer</h3>
+                        <div id="query-type-badge" class="inline-block text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-full"></div>
                     </div>
                 </div>
-                <div id="answer" class="answer-body text-gray-800 text-lg leading-relaxed"></div>
+                <div id="answer" class="answer-body text-gray-800 dark:text-gray-200 text-lg leading-relaxed"></div>
                 <div id="warnings" class="mt-6 hidden"></div>
             </div>
 
             <div id="stats-row" class="grid grid-cols-2 md:grid-cols-4 gap-4 hidden">
                 <div class="glass rounded-xl p-4 text-center">
-                    <div id="confidence-value" class="text-2xl font-bold text-blue-600">--</div>
-                    <div class="text-xs text-gray-500">Confidence</div>
+                    <div id="confidence-value" class="text-2xl font-bold text-blue-600 dark:text-blue-400">--</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Confidence</div>
                 </div>
                 <div class="glass rounded-xl p-4 text-center">
-                    <div id="citations-count" class="text-2xl font-bold text-purple-600">--</div>
-                    <div class="text-xs text-gray-500">Citations</div>
+                    <div id="citations-count" class="text-2xl font-bold text-purple-600 dark:text-purple-400">--</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Citations</div>
                 </div>
                 <div class="glass rounded-xl p-4 text-center">
-                    <div id="chunks-count" class="text-2xl font-bold text-green-600">--</div>
-                    <div class="text-xs text-gray-500">Chunks</div>
+                    <div id="chunks-count" class="text-2xl font-bold text-green-600 dark:text-green-400">--</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Chunks</div>
                 </div>
                 <div class="glass rounded-xl p-4 text-center">
-                    <div id="retry-count" class="text-2xl font-bold text-amber-600">--</div>
-                    <div class="text-xs text-gray-500">Retries</div>
+                    <div id="retry-count" class="text-2xl font-bold text-amber-600 dark:text-amber-400">--</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Retries</div>
                 </div>
             </div>
 
             <div id="citations-card" class="glass rounded-2xl shadow-xl p-8 hidden">
-                <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
                     Legal Citations
@@ -208,7 +251,7 @@ def get_landing_page_html() -> str:
                 <div id="citations" class="grid gap-3"></div>
             </div>
 
-            <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-200">
                 <div class="flex items-start gap-2">
                     <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
@@ -222,92 +265,106 @@ def get_landing_page_html() -> str:
         </div>
 
         <div class="mt-16 grid md:grid-cols-3 gap-6">
-            <div class="glass rounded-2xl p-6 border border-white/30 hover:shadow-lg transition-shadow">
-                <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center mb-4">
-                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="glass rounded-2xl p-6 border border-white/30 dark:border-slate-700/30 hover:shadow-lg transition-shadow">
+                <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-gray-800 mb-2">5-Jurisdiction Coverage</h3>
-                <p class="text-sm text-gray-600">Central RERA Act + Maharashtra, UP, Karnataka, and Tamil Nadu state rules</p>
+                <h3 class="font-semibold text-gray-800 dark:text-white mb-2">5-Jurisdiction Coverage</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Central RERA Act + Maharashtra, UP, Karnataka, and Tamil Nadu state rules</p>
             </div>
-            <div class="glass rounded-2xl p-6 border border-white/30 hover:shadow-lg transition-shadow">
-                <div class="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center mb-4">
-                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="glass rounded-2xl p-6 border border-white/30 dark:border-slate-700/30 hover:shadow-lg transition-shadow">
+                <div class="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-gray-800 mb-2">Cross-Reference Graph</h3>
-                <p class="text-sm text-gray-600">Neo4j-powered traversal between sections and DERIVED_FROM relationships</p>
+                <h3 class="font-semibold text-gray-800 dark:text-white mb-2">Cross-Reference Graph</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Neo4j-powered traversal between sections and DERIVED_FROM relationships</p>
             </div>
-            <div class="glass rounded-2xl p-6 border border-white/30 hover:shadow-lg transition-shadow">
-                <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center mb-4">
-                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="glass rounded-2xl p-6 border border-white/30 dark:border-slate-700/30 hover:shadow-lg transition-shadow">
+                <div class="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/50 flex items-center justify-center mb-4">
+                    <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-gray-800 mb-2">Hallucination Detection</h3>
-                <p class="text-sm text-gray-600">Validator agent with confidence scoring and citation verification</p>
+                <h3 class="font-semibold text-gray-800 dark:text-white mb-2">Hallucination Detection</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Validator agent with confidence scoring and citation verification</p>
             </div>
         </div>
 
-        <div class="mt-12 glass rounded-2xl p-8 border border-white/30">
-            <h3 class="text-lg font-semibold text-gray-800 mb-6">Document Coverage</h3>
+        <div class="mt-12 glass rounded-2xl p-8 border border-white/30 dark:border-slate-700/30">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-6">Document Coverage</h3>
             <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div class="flex items-center gap-3 p-4 bg-white/50 rounded-xl">
-                    <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">RERA</div>
+                <div class="flex items-center gap-3 p-4 bg-white/50 dark:bg-slate-800/50 rounded-xl">
+                    <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">RERA</div>
                     <div>
-                        <div class="font-medium text-gray-800">RERA Act 2016</div>
-                        <div class="text-xs text-gray-500">Central • 224 sections</div>
+                        <div class="font-medium text-gray-800 dark:text-white">RERA Act 2016</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Central • 224 sections</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 p-4 bg-white/50 rounded-xl">
-                    <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-sm">MH</div>
+                <div class="flex items-center gap-3 p-4 bg-white/50 dark:bg-slate-800/50 rounded-xl">
+                    <div class="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-sm">MH</div>
                     <div>
-                        <div class="font-medium text-gray-800">Maharashtra Rules 2017</div>
-                        <div class="text-xs text-gray-500">Maharashtra • 214 sections</div>
+                        <div class="font-medium text-gray-800 dark:text-white">Maharashtra Rules 2017</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Maharashtra • 214 sections</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 p-4 bg-white/50 rounded-xl">
-                    <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center text-green-600 font-bold text-sm">UP</div>
+                <div class="flex items-center gap-3 p-4 bg-white/50 dark:bg-slate-800/50 rounded-xl">
+                    <div class="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/50 flex items-center justify-center text-green-600 dark:text-green-400 font-bold text-sm">UP</div>
                     <div>
-                        <div class="font-medium text-gray-800">UP RERA Rules 2016</div>
-                        <div class="text-xs text-gray-500">Uttar Pradesh</div>
+                        <div class="font-medium text-gray-800 dark:text-white">UP RERA Rules 2016</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Uttar Pradesh</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 p-4 bg-white/50 rounded-xl">
-                    <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-sm">KA</div>
+                <div class="flex items-center gap-3 p-4 bg-white/50 dark:bg-slate-800/50 rounded-xl">
+                    <div class="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400 font-bold text-sm">KA</div>
                     <div>
-                        <div class="font-medium text-gray-800">Karnataka Rules 2017</div>
-                        <div class="text-xs text-gray-500">Karnataka</div>
+                        <div class="font-medium text-gray-800 dark:text-white">Karnataka Rules 2017</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Karnataka</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 p-4 bg-white/50 rounded-xl">
-                    <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center text-red-600 font-bold text-sm">TN</div>
+                <div class="flex items-center gap-3 p-4 bg-white/50 dark:bg-slate-800/50 rounded-xl">
+                    <div class="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/50 flex items-center justify-center text-red-600 dark:text-red-400 font-bold text-sm">TN</div>
                     <div>
-                        <div class="font-medium text-gray-800">Tamil Nadu Rules 2017</div>
-                        <div class="text-xs text-gray-500">Tamil Nadu</div>
+                        <div class="font-medium text-gray-800 dark:text-white">Tamil Nadu Rules 2017</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">Tamil Nadu</div>
                     </div>
                 </div>
             </div>
         </div>
     </main>
 
-    <footer class="mt-16 border-t border-gray-200 bg-white/50">
+    <footer class="mt-16 border-t border-gray-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/50">
         <div class="max-w-6xl mx-auto px-6 py-8">
             <div class="flex flex-col md:flex-row items-center justify-between gap-4">
-                <div class="text-sm text-gray-500">
-                    <span class="font-semibold text-gray-700">CivicSetu</span> — Open-source RAG for Indian civic documents
+                <div class="text-sm text-gray-500 dark:text-gray-400">
+                    <span class="font-semibold text-gray-700 dark:text-gray-200">CivicSetu</span> — Open-source RAG for Indian civic documents
                 </div>
-                <div class="flex items-center gap-6 text-sm text-gray-500">
-                    <a href="https://github.com/adeshboudh/civicsetu" class="hover:text-gray-700 transition-colors">GitHub</a>
-                    <a href="/docs" class="hover:text-gray-700 transition-colors">API Docs</a>
+                <div class="flex items-center gap-6 text-sm text-gray-500 dark:text-gray-400">
+                    <a href="https://github.com/adeshboudh/civicsetu" class="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">GitHub</a>
+                    <a href="/docs" class="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">API Docs</a>
                 </div>
             </div>
         </div>
     </footer>
 
     <script>
+        // Dark mode toggle
+        const toggleBtn = document.getElementById('theme-toggle');
+        const html = document.documentElement;
+
+        // Init: check localStorage or system preference
+        if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            html.classList.add('dark');
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            html.classList.toggle('dark');
+            localStorage.setItem('theme', html.classList.contains('dark') ? 'dark' : 'light');
+        });
+
         function setQuery(text) {
             document.getElementById('query').value = text;
             document.getElementById('query').focus();
@@ -352,7 +409,7 @@ def get_landing_page_html() -> str:
                     warningsHtml += '<div class="mb-3"><strong class="text-blue-700">Amendment Notice:</strong> ' + data.amendment_notice + '</div>';
                 }
                 if (warningsHtml) {
-                    warningsDiv.innerHTML = '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">' + warningsHtml + '</div>';
+                    warningsDiv.innerHTML = '<div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-4 text-sm">' + warningsHtml + '</div>';
                     warningsDiv.classList.remove('hidden');
                 }
 
@@ -365,15 +422,15 @@ def get_landing_page_html() -> str:
                 if (data.citations && data.citations.length) {
                     citationsCard.classList.remove('hidden');
                     citationsDiv.innerHTML = data.citations.map(c => `
-                        <div class="citation-card bg-white rounded-xl p-4 border-l-4 border-blue-500 shadow-sm">
+                        <div class="citation-card bg-white dark:bg-slate-800 rounded-xl p-4 border-l-4 border-blue-500 dark:border-blue-400 shadow-sm">
                             <div class="flex justify-between items-start">
                                 <div>
-                                    <div class="font-mono text-sm text-blue-600 font-semibold">${c.section_id}</div>
-                                    <div class="font-medium text-gray-800">${c.doc_name}</div>
+                                    <div class="font-mono text-sm text-blue-600 dark:text-blue-400 font-semibold">${c.section_id}</div>
+                                    <div class="font-medium text-gray-800 dark:text-gray-200">${c.doc_name}</div>
                                 </div>
-                                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">${c.jurisdiction}</span>
+                                <span class="text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-full">${c.jurisdiction}</span>
                             </div>
-                            <div class="text-xs text-gray-500 mt-2">Effective: ${c.effective_date || 'N/A'}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">Effective: ${c.effective_date || 'N/A'}</div>
                         </div>
                     `).join('');
                 }
@@ -381,7 +438,7 @@ def get_landing_page_html() -> str:
             } catch (error) {
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('answer-card').classList.remove('hidden');
-                document.getElementById('answer').innerHTML = '<div class="text-red-600 p-4 bg-red-50 rounded-xl"><strong>Error:</strong> ' + error.message + '</div>';
+                document.getElementById('answer').innerHTML = '<div class="text-red-600 dark:text-red-400 p-4 bg-red-50 dark:bg-red-900/30 rounded-xl"><strong>Error:</strong> ' + error.message + '</div>';
             }
         }
 
