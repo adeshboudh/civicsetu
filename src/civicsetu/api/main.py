@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from civicsetu.api.middleware.logging import LoggingMiddleware
@@ -420,7 +421,7 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     async def landing_page():
-        return get_landing_page_html()
+        return HTMLResponse(get_landing_page_html())
 
     app.add_middleware(
         CORSMiddleware,
