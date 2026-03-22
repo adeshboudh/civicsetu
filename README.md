@@ -11,6 +11,8 @@ pinned: false
 
 # CivicSetu
 
+**Live:** [https://adesh01-civicsetu.hf.space](https://adesh01-civicsetu.hf.space)
+
 Open-source RAG system for querying Indian civic and legal documents — with accurate
 citations, cross-reference traversal, and conflict detection between laws.
 
@@ -90,6 +92,15 @@ make ingest
 # 5. Start the API
 make serve
 ```
+
+**Full docs:** [HLD](docs/HLD.md) | [LLD](docs/LLD.md)
+
+## Production
+
+- **PostgreSQL + pgvector:** [Neon](https://neon.tech) — 1203 chunks
+- **Neo4j:** [AuraDB Free](https://neo4j.com/cloud/aura) — 1203 sections, 521 edges
+- **API:** [Hugging Face Spaces](https://huggingface.co/spaces/adesh01/civicsetu) — Docker + 550MB model baked in
+- **LLM:** LiteLLM (Gemini → Groq → OpenRouter)
 
 ### 6. Query
 
