@@ -41,6 +41,10 @@ async def close_driver() -> None:
             _driver = None
             log.info("neo4j_driver_closed")
 
+async def get_driver() -> AsyncDriver:
+    """Public alias for main.py lifespan — warms the singleton at startup."""
+    return await _get_driver()
+
 
 class GraphStore:
     """
