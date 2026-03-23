@@ -72,13 +72,11 @@ class GraphRetriever:
         chunks: list[RetrievedChunk] = []
         seen_chunk_ids: set[str] = set()
 
-        async with AsyncSessionLocal() as session:
-
-            async def _fetch_jurisdiction(jur_str: str) -> list[RetrievedChunk]:
+        async def _fetch_jurisdiction(jur_str: str) -> list[RetrievedChunk]:
+            async with AsyncSessionLocal() as session:  # ← session scoped per coroutine
                 jur_enum = Jurisdiction(jur_str) if not jurisdiction else jurisdiction
                 jur_chunks: list[RetrievedChunk] = []
 
-                # 1 — Source section itself
                 source = await VectorStore.get_by_section(
                     session=session, section_id=section_id, jurisdiction=jur_enum,
                 )
@@ -88,10 +86,7 @@ class GraphRetriever:
                     rc.is_pinned = rc.chunk.section_id == section_id
                 jur_chunks.extend(source)
 
-                # 2 — Outgoing REFERENCES (sections this section cites)
-                outgoing = await GraphStore.get_referenced_sections(
-                    section_id=section_id, jurisdiction=jur_str, depth=depth,
-                )
+                outgoing = await GraphStore.get_referenced_sections(section_id, jur_str, depth)
                 for node in outgoing:
                     hydrated = await VectorStore.get_by_section(
                         session=session,
@@ -103,10 +98,7 @@ class GraphRetriever:
                         rc.graph_path = f"{section_id} →[REFERENCES]→ {node['section_id']}"
                     jur_chunks.extend(hydrated)
 
-                # 3 — Incoming REFERENCES (sections that cite this section)
-                incoming = await GraphStore.get_sections_referencing(
-                    section_id=section_id, jurisdiction=jur_str,
-                )
+                incoming = await GraphStore.get_sections_referencing(section_id, jur_str)
                 for node in incoming:
                     hydrated = await VectorStore.get_by_section(
                         session=session,
@@ -118,10 +110,7 @@ class GraphRetriever:
                         rc.graph_path = f"{node['section_id']} →[REFERENCES]→ {section_id}"
                     jur_chunks.extend(hydrated)
 
-                # 4 — DERIVED_FROM outgoing (rule → parent act section)
-                derived_act = await GraphStore.get_derived_act_sections(
-                    rule_section_id=section_id, rule_jurisdiction=jur_str,
-                )
+                derived_act = await GraphStore.get_derived_act_sections(section_id, jur_str)
                 for node in derived_act:
                     hydrated = await VectorStore.get_by_section(
                         session=session,
@@ -133,10 +122,7 @@ class GraphRetriever:
                         rc.graph_path = f"{section_id}@{jur_str} →[DERIVED_FROM]→ {node['section_id']}@{node['jurisdiction']}"
                     jur_chunks.extend(hydrated)
 
-                # 5 — DERIVED_FROM incoming (act → deriving rule sections)
-                deriving = await GraphStore.get_deriving_rule_sections(
-                    act_section_id=section_id, act_jurisdiction=jur_str,
-                )
+                deriving = await GraphStore.get_deriving_rule_sections(section_id, jur_str)
                 for node in deriving:
                     hydrated = await VectorStore.get_by_section(
                         session=session,
@@ -150,16 +136,16 @@ class GraphRetriever:
 
                 return jur_chunks
 
-            # All 5 jurisdictions in parallel — replaces serial for-loop
-            all_results = await asyncio.gather(
-                *[_fetch_jurisdiction(j) for j in jurisdictions_to_search],
-                return_exceptions=True,
-            )
-            for result in all_results:
-                if isinstance(result, Exception):
-                    log.warning("graph_jurisdiction_fetch_failed", error=str(result))
-                else:
-                    chunks.extend(result)
+        # gather is now OUTSIDE the session context
+        all_results = await asyncio.gather(
+            *[_fetch_jurisdiction(j) for j in jurisdictions_to_search],
+            return_exceptions=True,
+        )
+        for result in all_results:
+            if isinstance(result, Exception):
+                log.warning("graph_jurisdiction_fetch_failed", error=str(result))
+            else:
+                chunks.extend(result)
 
         # Dedup by chunk_id (same chunk can arrive via multiple traversal paths)
         deduped: list[RetrievedChunk] = []
