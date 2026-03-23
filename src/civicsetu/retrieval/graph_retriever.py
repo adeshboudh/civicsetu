@@ -32,15 +32,15 @@ class GraphRetriever:
     Retrieves chunks via Neo4j graph traversal rather than vector similarity.
 
     Used for:
-      - cross_reference queries: "What does Section 18 reference?"
-      - penalty_lookup queries: "What are the penalties under Section 59?"
-      - temporal queries: "Which sections were amended?"
+    - cross_reference queries: "What does Section 18 reference?"
+    - penalty_lookup queries: "What are the penalties under Section 59?"
+    - temporal queries: "Which sections were amended?"
 
     Strategy:
-      1. Extract section_id from query (regex)
-      2. Traverse REFERENCES + DERIVED_FROM edges in Neo4j
-      3. Hydrate section_ids into LegalChunk objects via VectorStore.get_by_section()
-      4. Dedup + cap at _MAX_GRAPH_CHUNKS before returning
+    1. Extract section_id from query (regex)
+    2. Traverse REFERENCES + DERIVED_FROM edges in Neo4j (all 5 jurisdictions in parallel)
+    3. Hydrate section_ids into LegalChunk objects via VectorStore.get_by_section()
+    4. Dedup + cap at _MAX_GRAPH_CHUNKS before returning
     """
 
     @staticmethod
@@ -62,90 +62,104 @@ class GraphRetriever:
             else _ALL_JURISDICTIONS
         )
 
-        log.info("graph_retriever_traversing", section_id=section_id, depth=depth,
-                 jurisdictions=jurisdictions_to_search)
+        log.info(
+            "graph_retriever_traversing",
+            section_id=section_id,
+            depth=depth,
+            jurisdictions=jurisdictions_to_search,
+        )
 
         chunks: list[RetrievedChunk] = []
         seen_chunk_ids: set[str] = set()
 
         async with AsyncSessionLocal() as session:
-            for jur_str in jurisdictions_to_search:
+
+            async def _fetch_jurisdiction(jur_str: str) -> list[RetrievedChunk]:
                 jur_enum = Jurisdiction(jur_str) if not jurisdiction else jurisdiction
+                jur_chunks: list[RetrievedChunk] = []
 
                 # 1 — Source section itself
-                source_chunks = await VectorStore.get_by_section(
+                source = await VectorStore.get_by_section(
                     session=session, section_id=section_id, jurisdiction=jur_enum,
                 )
-                for rc in source_chunks:
-                    is_exact = rc.chunk.section_id == section_id
+                for rc in source:
                     rc.retrieval_source = "graph"
                     rc.graph_path = f"source:{section_id}@{jur_str}"
-                    rc.is_pinned = is_exact
-                chunks.extend(source_chunks)
+                    rc.is_pinned = rc.chunk.section_id == section_id
+                jur_chunks.extend(source)
 
                 # 2 — Outgoing REFERENCES (sections this section cites)
                 outgoing = await GraphStore.get_referenced_sections(
                     section_id=section_id, jurisdiction=jur_str, depth=depth,
                 )
                 for node in outgoing:
-                    node_jur = Jurisdiction(node["jurisdiction"])
                     hydrated = await VectorStore.get_by_section(
                         session=session,
                         section_id=node["section_id"],
-                        jurisdiction=node_jur,
+                        jurisdiction=Jurisdiction(node["jurisdiction"]),
                     )
                     for rc in hydrated:
                         rc.retrieval_source = "graph"
                         rc.graph_path = f"{section_id} →[REFERENCES]→ {node['section_id']}"
-                    chunks.extend(hydrated)
+                    jur_chunks.extend(hydrated)
 
                 # 3 — Incoming REFERENCES (sections that cite this section)
                 incoming = await GraphStore.get_sections_referencing(
                     section_id=section_id, jurisdiction=jur_str,
                 )
                 for node in incoming:
-                    node_jur = Jurisdiction(node["jurisdiction"])
                     hydrated = await VectorStore.get_by_section(
                         session=session,
                         section_id=node["section_id"],
-                        jurisdiction=node_jur,
+                        jurisdiction=Jurisdiction(node["jurisdiction"]),
                     )
                     for rc in hydrated:
                         rc.retrieval_source = "graph"
                         rc.graph_path = f"{node['section_id']} →[REFERENCES]→ {section_id}"
-                    chunks.extend(hydrated)
+                    jur_chunks.extend(hydrated)
 
                 # 4 — DERIVED_FROM outgoing (rule → parent act section)
                 derived_act = await GraphStore.get_derived_act_sections(
                     rule_section_id=section_id, rule_jurisdiction=jur_str,
                 )
                 for node in derived_act:
-                    node_jur = Jurisdiction(node["jurisdiction"])
                     hydrated = await VectorStore.get_by_section(
                         session=session,
                         section_id=node["section_id"],
-                        jurisdiction=node_jur,
+                        jurisdiction=Jurisdiction(node["jurisdiction"]),
                     )
                     for rc in hydrated:
                         rc.retrieval_source = "graph"
                         rc.graph_path = f"{section_id}@{jur_str} →[DERIVED_FROM]→ {node['section_id']}@{node['jurisdiction']}"
-                    chunks.extend(hydrated)
+                    jur_chunks.extend(hydrated)
 
                 # 5 — DERIVED_FROM incoming (act → deriving rule sections)
-                deriving_rules = await GraphStore.get_deriving_rule_sections(
+                deriving = await GraphStore.get_deriving_rule_sections(
                     act_section_id=section_id, act_jurisdiction=jur_str,
                 )
-                for node in deriving_rules:
-                    node_jur = Jurisdiction(node["jurisdiction"])
+                for node in deriving:
                     hydrated = await VectorStore.get_by_section(
                         session=session,
                         section_id=node["section_id"],
-                        jurisdiction=node_jur,
+                        jurisdiction=Jurisdiction(node["jurisdiction"]),
                     )
                     for rc in hydrated:
                         rc.retrieval_source = "graph"
                         rc.graph_path = f"{node['section_id']}@{node['jurisdiction']} →[DERIVED_FROM]→ {section_id}@{jur_str}"
-                    chunks.extend(hydrated)
+                    jur_chunks.extend(hydrated)
+
+                return jur_chunks
+
+            # All 5 jurisdictions in parallel — replaces serial for-loop
+            all_results = await asyncio.gather(
+                *[_fetch_jurisdiction(j) for j in jurisdictions_to_search],
+                return_exceptions=True,
+            )
+            for result in all_results:
+                if isinstance(result, Exception):
+                    log.warning("graph_jurisdiction_fetch_failed", error=str(result))
+                else:
+                    chunks.extend(result)
 
         # Dedup by chunk_id (same chunk can arrive via multiple traversal paths)
         deduped: list[RetrievedChunk] = []

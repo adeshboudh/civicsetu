@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from civicsetu.api.middleware.logging import LoggingMiddleware
 from civicsetu.api.routes import health, query
 from civicsetu.config.settings import get_settings
+from civicsetu.stores.graph_store import get_driver, close_driver
 
 log = structlog.get_logger(__name__)
 settings = get_settings()
@@ -460,9 +461,9 @@ async def lifespan(app: FastAPI):
     from civicsetu.agent.graph import get_compiled_graph
     app.state.graph = get_compiled_graph()
     log.info("langgraph_compiled")
-
+    await get_driver()
     yield
-
+    await close_driver()
     log.info("civicsetu_shutdown")
 
 
