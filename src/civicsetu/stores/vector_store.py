@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from civicsetu.config.settings import get_settings
 from civicsetu.models.enums import DocType, Jurisdiction
 from civicsetu.models.schemas import LegalChunk, RetrievedChunk
+from civicsetu.retrieval.cache import make_key, retrieval_cache
 
 log = structlog.get_logger(__name__)
 settings = get_settings()
@@ -35,6 +36,17 @@ class VectorStore:
                 f"Expected embedding of dim {settings.embedding_dimension}, "
                 f"got {len(query_embedding)}"
             )
+
+        cache_key = make_key(str(query_embedding), jurisdiction, doc_type, top_k, active_only)
+        cached = retrieval_cache.get(cache_key)
+        if cached is not None:
+            log.debug(
+                "vector_retrieval_cache_hit",
+                jurisdiction=str(jurisdiction) if jurisdiction else None,
+                doc_type=str(doc_type) if doc_type else None,
+                top_k=top_k,
+            )
+            return cached
 
         # Build dynamic WHERE clause
         filters = []
@@ -101,6 +113,7 @@ class VectorStore:
             results=len(retrieved),
             jurisdiction=jurisdiction,
         )
+        retrieval_cache[cache_key] = retrieved
         return retrieved
 
     @staticmethod

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import operator
-from typing import Annotated
+from typing import Annotated, NotRequired
 
 from typing_extensions import TypedDict
 
 from civicsetu.models.enums import Jurisdiction, QueryType
-from civicsetu.models.schemas import Citation, RetrievedChunk
+from civicsetu.models.schemas import ChatMessage, Citation, RetrievedChunk
 
 
 class CivicSetuState(TypedDict):
@@ -15,13 +15,14 @@ class CivicSetuState(TypedDict):
     session_id: str | None
     jurisdiction_filter: Jurisdiction | None
     top_k: int
+    messages: Annotated[list[ChatMessage], operator.add]
 
     # ── Classification ─────────────────────────────────────────────────────────
     query_type: QueryType | None
     rewritten_query: str | None           # expanded/clarified query
 
     # ── Retrieval ──────────────────────────────────────────────────────────────
-    retrieved_chunks: Annotated[list[RetrievedChunk], operator.add]
+    retrieved_chunks: list[RetrievedChunk]
     reranked_chunks: list[RetrievedChunk]
 
     # ── Generation ─────────────────────────────────────────────────────────────
@@ -35,3 +36,5 @@ class CivicSetuState(TypedDict):
     retry_count: int
     hallucination_flag: bool
     error: str | None
+    skip_classifier: NotRequired[bool]
+    source_section_id: NotRequired[str]

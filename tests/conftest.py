@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 
 from civicsetu.models.enums import ChunkStatus, DocType, Jurisdiction, QueryType
-from civicsetu.models.schemas import Citation, LegalChunk, RetrievedChunk
+from civicsetu.models.schemas import Citation, ChatMessage, LegalChunk, RetrievedChunk
 
 
 def _make_chunk(
@@ -55,6 +55,7 @@ def _base_state(**overrides) -> dict:
         "session_id": "test-session",
         "jurisdiction_filter": None,
         "top_k": 5,
+        "messages": [ChatMessage(role="user", content="What are promoter obligations?")],
         "query_type": None,
         "rewritten_query": None,
         "retrieved_chunks": [],

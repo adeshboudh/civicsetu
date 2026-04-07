@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +11,14 @@ from fastapi.testclient import TestClient
 from civicsetu.models.enums import Jurisdiction, QueryType
 from civicsetu.models.schemas import Citation
 from tests.conftest import _base_state
+
+
+@pytest.fixture(autouse=True)
+def reset_graph_topology_cache():
+    from civicsetu.api.routes import graph as graph_routes
+
+    graph_routes._topo_cache["data"] = None
+    graph_routes._topo_cache["ts"] = 0.0
 
 
 def _make_citation(section_id: str = "18") -> Citation:
@@ -29,13 +37,19 @@ def client():
     with patch("civicsetu.agent.graph.get_compiled_graph") as mock_graph:
         mock_compiled = MagicMock()
         mock_graph.return_value = mock_compiled
+        fake_checkpointer = AsyncMock()
 
-        from civicsetu.api.main import create_app
-        app = create_app()
-        app.state.graph = mock_compiled
+        @asynccontextmanager
+        async def fake_checkpointer_context():
+            yield fake_checkpointer
 
-        with TestClient(app) as c:
-            yield c, mock_compiled
+        with patch("civicsetu.api.main.create_checkpointer", return_value=fake_checkpointer_context()):
+            from civicsetu.api.main import create_app
+            app = create_app()
+            app.state.graph = mock_compiled
+
+            with TestClient(app) as c:
+                yield c, mock_compiled
 
 
 # ── POST /api/v1/query ────────────────────────────────────────────────────────
@@ -57,6 +71,7 @@ def test_query_returns_200_with_citations(client):
     assert "answer" in body
     assert len(body["citations"]) == 1
     assert body["citations"][0]["section_id"] == "18"
+    assert "session_id" in body
 
 
 def test_query_returns_insufficient_when_no_citations(client):
@@ -106,3 +121,216 @@ def test_query_response_always_has_disclaimer(client):
     body = response.json()
     assert "disclaimer" in body
     assert len(body["disclaimer"]) > 0
+
+
+def test_query_reuses_provided_session_id(client):
+    test_client, mock_graph = client
+    mock_graph.invoke.return_value = {
+        "raw_response": "Under Section 18...",
+        "citations": [_make_citation()],
+        "confidence_score": 0.8,
+        "query_type": QueryType.FACT_LOOKUP,
+        "conflict_warnings": [],
+        "amendment_notice": None,
+    }
+
+    response = test_client.post(
+        "/api/v1/query",
+        json={"query": "What does Section 18 say?", "session_id": "my-session-abc"},
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["session_id"] == "my-session-abc"
+    _, config = mock_graph.invoke.call_args.args
+    assert config["configurable"]["thread_id"] == "my-session-abc"
+
+
+def test_graph_topology_returns_nodes_and_edges(client):
+    test_client, _ = client
+
+    with patch("civicsetu.api.routes.graph.GraphStore.get_topology", new=AsyncMock(return_value=(
+        [
+            {
+                "chunk_id": "chunk-18",
+                "section_id": "18",
+                "title": "Return of amount and compensation",
+                "jurisdiction": "CENTRAL",
+                "doc_name": "RERA Act 2016",
+                "is_active": True,
+                "connection_count": 3,
+            }
+        ],
+        [
+            {
+                "source": "chunk-18",
+                "target": "chunk-19",
+                "edge_type": "REFERENCES",
+            }
+        ],
+    ))), patch(
+        "civicsetu.api.routes.graph.GraphStore.graph_stats",
+        new=AsyncMock(return_value={"sections": 10, "refs": 4, "derived_from": 2}),
+    ):
+        response = test_client.get("/api/v1/graph/topology")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["nodes"][0]["section_id"] == "18"
+    assert body["edges"][0]["edge_type"] == "REFERENCES"
+    assert body["stats"]["sections"] == 10
+
+
+def test_graph_topology_uses_cache(client):
+    test_client, _ = client
+    with patch("civicsetu.api.routes.graph.GraphStore.get_topology", new=AsyncMock(return_value=([], []))) as mock_topology, patch(
+        "civicsetu.api.routes.graph.GraphStore.graph_stats",
+        new=AsyncMock(return_value={"sections": 0}),
+    ):
+        first = test_client.get("/api/v1/graph/topology")
+        second = test_client.get("/api/v1/graph/topology")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert mock_topology.await_count == 1
+
+
+def test_graph_section_content_returns_stitched_chunks_and_connections(client):
+    test_client, _ = client
+    fake_rows = [
+        {
+            "chunk_id": "chunk-18-a",
+            "section_title": "Return of amount and compensation",
+            "text": "First chunk.",
+            "page_number": 1,
+            "doc_name": "RERA Act 2016",
+            "jurisdiction": "CENTRAL",
+            "effective_date": date(2016, 5, 1),
+            "source_url": "https://example.com/rera.pdf",
+        },
+        {
+            "chunk_id": "chunk-18-b",
+            "section_title": "Return of amount and compensation",
+            "text": "Second chunk.",
+            "page_number": 2,
+            "doc_name": "RERA Act 2016",
+            "jurisdiction": "CENTRAL",
+            "effective_date": date(2016, 5, 1),
+            "source_url": "https://example.com/rera.pdf",
+        },
+    ]
+
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.all.return_value = fake_rows
+    mock_db = AsyncMock()
+    mock_db.execute.return_value = mock_result
+
+    @asynccontextmanager
+    async def fake_session():
+        yield mock_db
+
+    with patch("civicsetu.api.routes.graph.AsyncSessionLocal", side_effect=fake_session), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_referenced_sections",
+        new=AsyncMock(return_value=[{"section_id": "19", "title": "Rights", "jurisdiction": "CENTRAL"}]),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_sections_referencing",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_derived_act_sections",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_deriving_rule_sections",
+        new=AsyncMock(return_value=[]),
+    ):
+        response = test_client.get("/api/v1/graph/section/18?jurisdiction=CENTRAL")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [chunk["page_number"] for chunk in body["chunks"]] == [1, 2]
+    assert body["connected_sections"][0]["edge_type"] == "REFERENCES_OUT"
+    assert body["source_url"] == "https://example.com/rera.pdf"
+
+
+def test_graph_section_content_resolves_graph_chunk_id_case_insensitive_status(client):
+    test_client, _ = client
+
+    node_result = MagicMock()
+    node_result.mappings.return_value.first.return_value = {
+        "section_id": "4",
+        "jurisdiction": "CENTRAL",
+    }
+    chunks_result = MagicMock()
+    chunks_result.mappings.return_value.all.return_value = [
+        {
+            "chunk_id": "postgres-chunk-4",
+            "section_id": "4",
+            "section_title": "Prior registration of real estate project",
+            "text": "Section text.",
+            "page_number": 1,
+            "doc_name": "RERA Act 2016",
+            "jurisdiction": "CENTRAL",
+            "effective_date": date(2016, 5, 1),
+            "source_url": "https://example.com/rera.pdf",
+        }
+    ]
+    mock_db = AsyncMock()
+    mock_db.execute.side_effect = [node_result, chunks_result]
+
+    @asynccontextmanager
+    async def fake_session():
+        yield mock_db
+
+    with patch("civicsetu.api.routes.graph.AsyncSessionLocal", side_effect=fake_session), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_referenced_sections",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_sections_referencing",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_derived_act_sections",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.get_deriving_rule_sections",
+        new=AsyncMock(return_value=[]),
+    ):
+        response = test_client.get(
+            "/api/v1/graph/section/4?jurisdiction=CENTRAL&chunk_id=72ecb226-2aae-4c6c-bd23-5dc3a9439642"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["chunks"][0]["chunk_id"] == "postgres-chunk-4"
+    first_lookup_sql = str(mock_db.execute.await_args_list[0].args[0])
+    section_lookup_sql = str(mock_db.execute.await_args_list[1].args[0])
+    assert "lower(status) = 'active'" in first_lookup_sql
+    assert "lower(status) = 'active'" in section_lookup_sql
+
+
+def test_section_context_query_sets_skip_classifier_and_source_section(client):
+    test_client, mock_graph = client
+    mock_graph.invoke.return_value = {
+        "raw_response": "Section 18 requires refund with interest.",
+        "citations": [_make_citation("18")],
+        "confidence_score": 0.88,
+        "query_type": QueryType.CROSS_REFERENCE,
+        "conflict_warnings": [],
+        "amendment_notice": None,
+    }
+
+    response = test_client.post(
+        "/api/v1/query/section-context",
+        json={
+            "query": "Explain this section",
+            "section_id": "18",
+            "jurisdiction": "CENTRAL",
+            "session_id": "section-thread-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == "section-thread-1"
+    initial_state, config = mock_graph.invoke.call_args.args
+    assert initial_state["skip_classifier"] is True
+    assert initial_state["source_section_id"] == "18"
+    assert initial_state["query_type"] == QueryType.CROSS_REFERENCE
+    assert config["configurable"]["thread_id"] == "section-thread-1"

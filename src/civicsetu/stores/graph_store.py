@@ -385,6 +385,38 @@ class GraphStore:
             return await result.data()
 
     @staticmethod
+    async def get_topology() -> tuple[list[dict], list[dict]]:
+        driver = await _get_driver()
+        async with driver.session() as session:
+            edges_result = await session.run(
+                """
+                MATCH (s:Section)-[r]->(t:Section)
+                WHERE type(r) IN ['REFERENCES', 'DERIVED_FROM']
+                  AND s.is_active = true AND t.is_active = true
+                RETURN s.chunk_id AS source, t.chunk_id AS target, type(r) AS edge_type
+                """
+            )
+            nodes_result = await session.run(
+                """
+                MATCH (s:Section)-[r]-()
+                WHERE type(r) IN ['REFERENCES', 'DERIVED_FROM']
+                  AND s.is_active = true
+                WITH s, count(r) AS conn_count
+                RETURN DISTINCT
+                    s.chunk_id AS chunk_id,
+                    s.section_id AS section_id,
+                    s.title AS title,
+                    s.jurisdiction AS jurisdiction,
+                    s.doc_name AS doc_name,
+                    s.is_active AS is_active,
+                    conn_count AS connection_count
+                """
+            )
+            edges = await edges_result.data()
+            nodes = await nodes_result.data()
+            return nodes, edges
+
+    @staticmethod
     async def graph_stats() -> dict:
         driver = await _get_driver()
         async with driver.session() as session:
@@ -400,3 +432,4 @@ class GraphStore:
             )
             record = await result.single()
             return dict(record) if record else {}
+

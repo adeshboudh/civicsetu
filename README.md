@@ -134,6 +134,7 @@ make docker-down                        # Tear down containers
 | RERA Act 2016                      | Central       | 224      |
 | Maharashtra Real Estate Rules 2017 | Maharashtra   | 214      |
 | UP RERA Rules 2016                 | Uttar Pradesh | 170      |
+| UP RERA General Regulations 2019   | Uttar Pradesh | 85       |
 | Karnataka RERA Rules 2017          | Karnataka     | 235      |
 | Tamil Nadu RERA Rules 2017         | Tamil Nadu    | 157      |
 
