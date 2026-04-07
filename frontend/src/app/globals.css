@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --ledger-bg: #0d0d0d;
+  --ledger-panel: #141414;
+  --ledger-card: #1a1a1a;
+  --ledger-hover: #222222;
+  --ledger-fg: #e5e2e1;
+  --ledger-muted: rgba(229, 226, 225, 0.42);
+  --ledger-ghost: rgba(255, 255, 255, 0.08);
+  --ledger-primary: #4f98a3;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--ledger-bg);
+  color: var(--ledger-fg);
+  font-family: var(--font-inter), sans-serif;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  ::selection {
+    background: rgba(79, 152, 163, 0.26);
+  }
+}
+
+@layer utilities {
+  .ledger-brand {
+    font-family: var(--font-instrument-serif), serif;
+    font-style: italic;
+    color: var(--ledger-primary);
+  }
+
+  .ledger-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  }
+
+  .ledger-scroll::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .ledger-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .ledger-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+  50% {
+    filter: drop-shadow(0 0 12px currentColor) drop-shadow(0 0 20px currentColor);
+  }
+}
+
+.node-selected {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.node-hover-glow {
+  filter: drop-shadow(0 0 6px currentColor);
+}

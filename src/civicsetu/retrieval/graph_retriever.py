@@ -5,6 +5,7 @@ import structlog
 
 from civicsetu.models.enums import Jurisdiction
 from civicsetu.models.schemas import RetrievedChunk
+from civicsetu.retrieval.cache import graph_cache, make_key
 from civicsetu.stores.graph_store import GraphStore
 from civicsetu.stores.relational_store import AsyncSessionLocal
 from civicsetu.stores.vector_store import VectorStore
@@ -48,12 +49,25 @@ class GraphRetriever:
         query: str,
         jurisdiction: Jurisdiction | None = None,
         depth: int = 2,
+        source_section_id: str | None = None,
     ) -> list[RetrievedChunk]:
-        section_id = GraphRetriever._extract_section_id(query)
+        section_id = source_section_id or GraphRetriever._extract_section_id(query)
 
         if not section_id:
             log.info("graph_retriever_no_section_found", query=query[:80])
             return []
+
+        jurisdiction_key = jurisdiction.value if jurisdiction else "all"
+        cache_key = make_key(section_id, jurisdiction_key, depth)
+        cached = graph_cache.get(cache_key)
+        if cached is not None:
+            log.debug(
+                "graph_retrieval_cache_hit",
+                section_id=section_id,
+                jurisdiction=jurisdiction_key,
+                depth=depth,
+            )
+            return cached
 
         # Explicit filter → search only that jurisdiction.
         # No filter → search all jurisdictions (CENTRAL first).
@@ -168,6 +182,7 @@ class GraphRetriever:
             pinned=len(pinned),
             deduped_total=len(deduped),
         )
+        graph_cache[cache_key] = final
         return final
 
     @staticmethod

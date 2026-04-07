@@ -1,4 +1,4 @@
-.PHONY: help install dev serve ingest lint format typecheck test test-cov e2e docker-up docker-down clean
+.PHONY: help install dev serve ingest lint format typecheck test test-cov e2e docker-up docker-down clean frontend-install frontend-dev frontend-build frontend-start frontend-lint frontend-typecheck
 
 help:
 	@echo "CivicSetu — available commands:"
@@ -72,3 +72,22 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete 2>/dev/null || true
 	find . -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+
+# Frontend
+frontend-install:
+	cd frontend && npm install
+
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-build:
+	cd frontend && npm run build
+
+frontend-start:
+	cd frontend && npm run start
+
+frontend-lint:
+	cd frontend && npm run lint
+
+frontend-typecheck:
+	cd frontend && npm run typecheck

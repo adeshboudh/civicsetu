@@ -44,7 +44,10 @@ class OutputGuard:
         # 1 — No citations → always InsufficientInfoResponse
         if not citations:
             log.info("output_guard_no_citations", query_preview=original_query[:80])
-            return InsufficientInfoResponse(searched_query=original_query)
+            return InsufficientInfoResponse(
+                searched_query=original_query,
+                session_id=result.get("session_id"),
+            )
 
         # 2 — Confidence below floor → downgrade
         if confidence < _CONFIDENCE_FLOOR:
@@ -54,7 +57,10 @@ class OutputGuard:
                 floor=_CONFIDENCE_FLOOR,
                 query_preview=original_query[:80],
             )
-            return InsufficientInfoResponse(searched_query=original_query)
+            return InsufficientInfoResponse(
+                searched_query=original_query,
+                session_id=result.get("session_id"),
+            )
 
         # 3 — Build response (disclaimer is a default field on CivicSetuResponse,
         #     but we enforce it here explicitly so no future refactor silently drops it)
@@ -66,6 +72,7 @@ class OutputGuard:
             query_type_resolved=result.get("query_type") or QueryType.FACT_LOOKUP,
             conflict_warnings=result.get("conflict_warnings", []),
             amendment_notice=result.get("amendment_notice"),
+            session_id=result.get("session_id"),
         )
 
         # Sanity check — disclaimer must survive serialization unchanged

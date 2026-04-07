@@ -28,3 +28,23 @@ __MACOSX/
 .cache/
 models/
 **/*.onnx
+
+/docs/superpowers/**
+CLAUDE.md
+.claude/
+
+# Design artifacts
+stitch/
+stitch.zip
+index.html
+
+# Frontend (Next.js)
+frontend/.env.local
+frontend/.env*.local
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.vercel/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*

@@ -32,14 +32,14 @@ def _validator_state(hallucinated, confidence, retry_count, has_chunks=True):
     }
 
 
-def test_route_to_retry_on_hallucination():
-    state = _validator_state(hallucinated=True, confidence=0.9, retry_count=0)
+def test_route_to_retry_on_very_low_confidence():
+    state = _validator_state(hallucinated=True, confidence=0.1, retry_count=0)
     assert route_after_validator(state) == "retry"
 
 
-def test_route_to_retry_on_low_confidence():
-    state = _validator_state(hallucinated=False, confidence=0.3, retry_count=1)
-    assert route_after_validator(state) == "retry"
+def test_route_to_end_when_confidence_not_low_enough():
+    state = _validator_state(hallucinated=True, confidence=0.3, retry_count=1)
+    assert route_after_validator(state) == "end"
 
 
 def test_route_to_end_on_max_retries():
