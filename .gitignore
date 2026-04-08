@@ -29,6 +29,7 @@ __MACOSX/
 models/
 **/*.onnx
 
+/docs/plans/
 /docs/superpowers/**
 CLAUDE.md
 .claude/

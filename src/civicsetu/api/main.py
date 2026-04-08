@@ -74,7 +74,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="CivicSetu API",
         description="RAG system for Indian civic and legal documents",
-        version="0.1.0",
+        version="1.0.0",
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",

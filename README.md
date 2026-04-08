@@ -11,13 +11,13 @@ pinned: false
 
 # CivicSetu
 
-**Live:** [https://adesh01-civicsetu.hf.space](https://adesh01-civicsetu.hf.space)
+**Live:** [https://civicsetu-two.vercel.app](https://civicsetu-two.vercel.app)
 
 Open-source RAG system for querying Indian civic and legal documents — with accurate
 citations, cross-reference traversal, and conflict detection between laws.
 
-**Current status:** Phase 4 complete — 5-jurisdiction RERA coverage (Central + MH + UP + KA + TN),
-cross-jurisdiction graph edges live, 12/12 E2E passing.
+**Current status:** Phase 6 complete — 5-jurisdiction RERA coverage (Central + MH + UP + KA + TN),
+cross-jurisdiction graph edges live, 12/12 E2E passing, Next.js frontend deployed on Vercel.
 
 ---
 
@@ -76,7 +76,7 @@ Full design: [HLD.md](docs/HLD.md) | [LLD.md](docs/LLD.md)
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/yourname/civicsetu.git && cd civicsetu
+git clone https://github.com/adeshboudh/civicsetu.git && cd civicsetu
 make install
 
 # 2. Configure secrets
@@ -97,9 +97,10 @@ make serve
 
 ## Production
 
+- **Frontend:** [Vercel](https://civicsetu-two.vercel.app) — Next.js 15 App Router
+- **API:** [Hugging Face Spaces](https://huggingface.co/spaces/adesh01/civicsetu) — FastAPI + Docker + 550MB model baked in
 - **PostgreSQL + pgvector:** [Neon](https://neon.tech) — 1203 chunks
-- **Neo4j:** [AuraDB Free](https://neo4j.com/cloud/aura) — 1203 sections, 521 edges
-- **API:** [Hugging Face Spaces](https://huggingface.co/spaces/adesh01/civicsetu) — Docker + 550MB model baked in
+- **Neo4j:** [AuraDB Free](https://neo4j.com/cloud/aura) — 2090 sections, 2321 edges
 - **LLM:** LiteLLM (Gemini → Groq → OpenRouter)
 
 ### 6. Query
@@ -170,7 +171,9 @@ Graph: 2090 Section nodes, 1297 HAS_SECTION edges, 933 REFERENCES edges, 91 DERI
 | 2 | MahaRERA Rules 2017, multi-jurisdiction | ✅ Complete |
 | 3 | DERIVED_FROM edges, cross-jurisdiction graph | ✅ Complete |
 | 4 | Multi-state expansion (UP, TN, Karnataka) | ✅ Complete |
-| 5 | Open-source SaaS, UI, public API | ✅ Complete |
+| 5 | Agent pipeline hardening, E2E test suite | ✅ Complete |
+| 6 | Next.js frontend, Vercel deployment, public URL | ✅ Complete |
+| 7 | Graph explorer, section content drawer, D3 visualization | ✅ Complete |
 
 
 ---

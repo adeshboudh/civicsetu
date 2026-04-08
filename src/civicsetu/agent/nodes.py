@@ -109,6 +109,26 @@ def _llm_call(prompt: str, system: str, temperature: float = 0.0) -> str:
     raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")
 
 
+def _generator_tone_hint(query_type: QueryType | str | None) -> str:
+    """
+    Return tone guidance for the generator based on classifier output.
+    """
+    if isinstance(query_type, str):
+        query_type = QueryType._value2member_map_.get(query_type)
+
+    tone_hints = {
+        QueryType.FACT_LOOKUP: "Tone hint: Give a direct answer and include one helpful analogy.",
+        QueryType.PENALTY_LOOKUP: "Tone hint: Lead with the consequence, then explain why it applies.",
+        QueryType.CROSS_REFERENCE: "Tone hint: Explain the connection between sections as a narrative.",
+        QueryType.CONFLICT_DETECTION: (
+            "Tone hint: Explicitly flag the contradiction, explain both sides, "
+            "and state which jurisdiction takes precedence when the context supports it."
+        ),
+        QueryType.TEMPORAL: "Tone hint: Explain what changed, when, and why it matters.",
+    }
+    return tone_hints.get(query_type, tone_hints[QueryType.FACT_LOOKUP])
+
+
 # ── Node 1: Classifier ─────────────────────────────────────────────────────────
 
 def classifier_node(state: CivicSetuState) -> dict:
@@ -418,10 +438,14 @@ def generator_node(state: CivicSetuState) -> dict:
         context=context,
         conversation_history_block=conversation_history_block,
     )
+    tone_hint = _generator_tone_hint(state.get("query_type"))
     system = (
-        "You are CivicSetu, a legal information assistant for Indian law. "
-        "Answer only from the provided context. "
-        "Every claim must be traceable to a specific section. "
+        "You are CivicSetu, a plain-language guide to Indian RERA laws for homebuyers, builders, and agents. "
+        "Your job is to explain what the law means in practice - not recite it. "
+        "Use simple language, real-world analogies, and short examples to make rules clear. "
+        "After explaining, anchor each point to the specific section it comes from. "
+        "Never invent provisions. "
+        f"{tone_hint} "
         "Respond with valid JSON only."
     )
 

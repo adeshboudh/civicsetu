@@ -1,4 +1,15 @@
-GENERATOR_PROMPT = """{conversation_history_block}Answer the following legal question using ONLY the provided context.
+GENERATOR_PROMPT = """{conversation_history_block}Answer the following question about RERA rules.
+
+Your answer must:
+1. Open with a plain-English summary of what the rule means in practice (1-3 sentences, no jargon)
+2. Use an analogy or real-world example where it helps (e.g. "Think of it like a builder's warranty")
+3. Explain the key points as a short bulleted list - focus on what it means for the person asking
+4. Note any connections to other rules, contradictions between jurisdictions, or important exceptions
+5. Close with section references anchoring each point (e.g. "Under Section 18...")
+
+Do NOT open with "According to Section X..." - explain first, cite second.
+Do NOT paste raw clause text - paraphrase and explain.
+Use ONLY the provided context.
 
 Question: {query}
 

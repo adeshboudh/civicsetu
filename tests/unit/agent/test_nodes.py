@@ -179,3 +179,57 @@ def test_generator_deduplicates_citations():
         result = generator_node(state)
 
     assert len(result["citations"]) == 1
+
+
+def test_generator_system_prompt_uses_plain_language_persona():
+    from civicsetu.agent.nodes import generator_node
+    from civicsetu.models.enums import QueryType
+
+    captured = {}
+
+    def fake_llm_call(prompt: str, system: str, temperature: float = 0.0) -> str:
+        captured["prompt"] = prompt
+        captured["system"] = system
+        return _llm_response(answer="If a builder misses the deadline, the buyer gets a remedy.")
+
+    with patch("civicsetu.agent.nodes._llm_call", side_effect=fake_llm_call):
+        state = _base_state(
+            query_type=QueryType.FACT_LOOKUP,
+            reranked_chunks=[_make_rc(section_id="18")],
+        )
+        generator_node(state)
+
+    assert "plain-language guide to Indian RERA laws" in captured["system"]
+    assert "explain what the law means in practice" in captured["system"]
+    assert "Respond with valid JSON only" in captured["system"]
+    assert "plain-English summary" in captured["prompt"]
+    assert "Do NOT open with \"According to Section X...\"" in captured["prompt"]
+
+
+@pytest.mark.parametrize(
+    ("query_type", "expected_hint"),
+    [
+        ("fact_lookup", "Give a direct answer and include one helpful analogy."),
+        ("penalty_lookup", "Lead with the consequence"),
+        ("cross_reference", "connection between sections as a narrative"),
+        ("conflict_detection", "Explicitly flag the contradiction"),
+        ("temporal", "Explain what changed, when, and why it matters."),
+    ],
+)
+def test_generator_system_prompt_includes_query_type_tone_hint(query_type, expected_hint):
+    from civicsetu.agent.nodes import generator_node
+
+    captured = {}
+
+    def fake_llm_call(prompt: str, system: str, temperature: float = 0.0) -> str:
+        captured["system"] = system
+        return _llm_response()
+
+    with patch("civicsetu.agent.nodes._llm_call", side_effect=fake_llm_call):
+        state = _base_state(
+            query_type=query_type,
+            reranked_chunks=[_make_rc(section_id="18")],
+        )
+        generator_node(state)
+
+    assert expected_hint in captured["system"]

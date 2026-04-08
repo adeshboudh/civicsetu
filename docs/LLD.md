@@ -1,7 +1,8 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 0.5.0 — Phase 4 Complete (4-State Ingestion)
-**Last Updated:** March 2026
+**Version:** 1.0.0 — Phase 6 Complete (Next.js Frontend + Vercel)
+**Live:** https://civicsetu-two.vercel.app
+**Last Updated:** April 2026
 
 ---
 
@@ -53,6 +54,24 @@ src/civicsetu/
     │   └── ingest.py         POST /api/v1/ingest — admin endpoint
     └── middleware/
         └── logging.py        Request/response structured logging
+
+frontend/                     Next.js 15 App Router — deployed on Vercel
+├── src/app/
+│   ├── layout.tsx            Root layout: ThemeProvider + dark mode
+│   ├── page.tsx              Main page: wires all components together
+│   └── globals.css           Tailwind directives + gradient utilities
+├── src/components/
+│   ├── Header.tsx            Logo, new chat, theme toggle, GitHub link
+│   ├── ChatThread.tsx        Scrollable message list + empty state examples
+│   ├── MessageBubble.tsx     User/assistant/error bubbles with badges + citations
+│   ├── ConfidenceBadge.tsx   HIGH/MEDIUM/LOW pill
+│   ├── CitationsPanel.tsx    Collapsible citation cards
+│   └── InputBar.tsx          Auto-resize textarea, jurisdiction select, send
+├── src/hooks/
+│   └── useChat.ts            Chat state, session_id localStorage, sendMessage
+└── src/lib/
+    ├── types.ts              TypeScript interfaces (mirrors backend Pydantic models)
+    └── api.ts                queryRera() fetch wrapper → /api/v1/query
 ```
 
 ---
@@ -396,7 +415,7 @@ Citation:
 
 ---
 
-## 10. Neo4j Graph — Phase 6 State
+## 10. Neo4j Graph — Phase 6 State (Current)
 
 **Nodes:** 9 Documents, 2090 Sections
 **Edges:** 1297 HAS_SECTION, 933 REFERENCES, 91 DERIVED_FROM

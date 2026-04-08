@@ -1,7 +1,7 @@
 # CivicSetu — High Level Design (HLD)
 
-+ **Version:** 0.5.0 — Phase 4 Complete
-+ **Status:** Phase 4 Complete — Multi-state RERA (Central + MH + UP + KA + TN)
++ **Version:** 1.0.0 — Phase 6 Complete
++ **Status:** Phase 6 Complete — Next.js frontend live at https://civicsetu-two.vercel.app
 + **Current Scope:** RERA Act 2016 (Central) + Maharashtra, Uttar Pradesh, Karnataka, Tamil Nadu Rules.
 
 ---
@@ -121,6 +121,7 @@ User Query
 | LiteLLM Gateway    | LLM provider fallback routing                         | LiteLLM                         |
 | FastAPI            | HTTP API layer                                        | FastAPI + Uvicorn               |
 | FlashRank          | Cross-encoder reranking (pinned source chunks exempt) | ONNX local model                |
+| Next.js Frontend   | Chat UI, multi-turn sessions, citations panel         | Next.js 15 App Router + Vercel  |
 
 ---
 
@@ -172,15 +173,16 @@ Output: {
 
 ## 7. Phase Roadmap
 
-| Phase | Scope                                          | Status          |
-|-------|------------------------------------------------|-----------------|
-| 0     | RERA Act 2016, vector RAG, FastAPI             | ✅ Complete     |
-| 1     | Neo4j graph, cross-reference queries           | ✅ Complete     |
-| 2     | MahaRERA Rules 2017, multi-jurisdiction        | ✅ Complete     |
-| 3     | DERIVED_FROM edges, cross-jurisdiction graph   | ✅ Complete     |
-| 4     | Multi-state expansion (UP, TN, Karnataka RERA) | ✅ Complete     |
-| 5     | Agent pipeline hardening, E2E test suite       | ✅ Complete     |
-| 6     | Open-source SaaS, UI, public API               | Planned         |
+| Phase | Scope                                              | Status          |
+|-------|----------------------------------------------------|-----------------|
+| 0     | RERA Act 2016, vector RAG, FastAPI                 | ✅ Complete     |
+| 1     | Neo4j graph, cross-reference queries               | ✅ Complete     |
+| 2     | MahaRERA Rules 2017, multi-jurisdiction            | ✅ Complete     |
+| 3     | DERIVED_FROM edges, cross-jurisdiction graph       | ✅ Complete     |
+| 4     | Multi-state expansion (UP, TN, Karnataka RERA)     | ✅ Complete     |
+| 5     | Agent pipeline hardening, E2E test suite           | ✅ Complete     |
+| 6     | Next.js frontend, Vercel deployment, public URL    | ✅ Complete     |
+| 7     | Graph explorer, section content drawer, D3 vis     | ✅ Complete     |
 
 ---
 
@@ -188,7 +190,7 @@ Output: {
 
 | Requirement        | Target                               | Current Status                         |
 |--------------------|--------------------------------------|----------------------------------------|
-| Response latency   | < 10s per query                      | 7.6s avg — 12/12 E2E PASS (2026-03-22) |
+| Response latency   | < 10s per query                      | 7.6s avg — 12/12 E2E PASS (2026-03-22). Live at https://civicsetu-two.vercel.app |
 | Citation accuracy  | 100% — never answer without citation | Enforced by schema                     |
 | Hallucination rate | < 5%                                 | Validator node + confidence gate       |
 | Cost               | $0 for dev/staging                   | All free tier                          |
