@@ -34,6 +34,16 @@ models/
 CLAUDE.md
 .claude/
 
+# Graphify knowledge graph (AI assistant knowledge base)
+graphify-out/
+.graphify_*.json
+.graphify_*.txt
+.graphify_*.py
+.graphify_python
+
+# Git worktrees
+.worktrees/
+
 # Design artifacts
 stitch/
 stitch.zip
