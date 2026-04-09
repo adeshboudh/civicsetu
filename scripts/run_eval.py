@@ -18,6 +18,7 @@ Limit rows for smoke testing:
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -92,6 +93,7 @@ def invoke_graph(graph, row: dict) -> dict:
 
     state = {
         "query": row["query"],
+        "messages": [],
         "jurisdiction_filter": jurisdiction,
         "top_k": 5,
         "session_id": f"eval_{row['id']}",
@@ -144,6 +146,15 @@ def invoke_graph(graph, row: dict) -> dict:
     }
 
 
+def _safe_metric(val, default: float = 0.0) -> float:
+    """Convert metric value to float, treating NaN as evaluation error (default)."""
+    try:
+        f = float(val)
+        return default if math.isnan(f) else f
+    except (TypeError, ValueError):
+        return default
+
+
 def score_batch(
     batch: list[dict],
     judge_llm: LangchainLLMWrapper,
@@ -173,14 +184,20 @@ def score_batch(
             llm=judge_llm,
             embeddings=judge_embeddings,
             raise_exceptions=False,
+            column_map={
+                "user_input": "question",
+                "response": "answer",
+                "retrieved_contexts": "contexts",
+                "reference": "ground_truth",
+            },
         )
         result_df = result.to_pandas()
 
         for row, (_, scores) in zip(scoreable, result_df.iterrows()):
             row = dict(row)
-            row["faithfulness"] = round(float(scores.get("faithfulness", 0.0)), 3)
-            row["answer_relevancy"] = round(float(scores.get("answer_relevancy", 0.0)), 3)
-            row["context_precision"] = round(float(scores.get("context_precision", 0.0)), 3)
+            row["faithfulness"] = round(_safe_metric(scores.get("faithfulness")), 3)
+            row["answer_relevancy"] = round(_safe_metric(scores.get("answer_relevancy")), 3)
+            row["context_precision"] = round(_safe_metric(scores.get("context_precision")), 3)
             row["pass"] = (
                 row["faithfulness"] >= PASS_THRESHOLD
                 and row["answer_relevancy"] >= PASS_THRESHOLD
@@ -206,7 +223,10 @@ def compute_group_stats(rows: list[dict], key: str) -> dict:
     latencies = [r["latency_ms"] for r in rows]
     latencies_sorted = sorted(latencies)
     n = len(latencies_sorted)
-    p50 = latencies_sorted[n // 2]
+    if n % 2 == 0:
+        p50 = (latencies_sorted[n // 2 - 1] + latencies_sorted[n // 2]) / 2.0
+    else:
+        p50 = latencies_sorted[n // 2]
     p90 = latencies_sorted[min(int(n * 0.9), n - 1)]
     p99 = latencies_sorted[min(int(n * 0.99), n - 1)]
     return {
@@ -258,6 +278,15 @@ def print_summary(all_rows: list[dict]) -> None:
 
 
 def main() -> None:
+    # Validate judge API key before spending time on Phase 1
+    if not os.environ.get("GEMINI_API_KEY_2"):
+        print(
+            "ERROR: GEMINI_API_KEY_2 is not set.\n"
+            "Export it before running: set GEMINI_API_KEY_2=<your-key>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     dataset_path = Path(__file__).parent.parent / "eval" / "golden_dataset.jsonl"
     if not dataset_path.exists():
         print(f"ERROR: dataset not found at {dataset_path}", file=sys.stderr)
@@ -324,7 +353,7 @@ def main() -> None:
         "rows": all_scored,
     }
 
-    out = Path("eval_results.json")
+    out = Path(__file__).parent.parent / "eval_results.json"
     out.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     print(f"\nFull results → {out}")
 
