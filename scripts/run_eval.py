@@ -53,9 +53,9 @@ PHASE2_OUT      = ROOT / "eval_results.json"
 # ── RAGAS judge (RAGAS 0.4.x native API via instructor) ───────────────────────
 
 def build_judge():
-    """Build RAGAS 0.4.x judge using LiteLLM + instructor."""
-    import instructor
-    from litellm import completion as litellm_completion
+    """Build RAGAS 0.4.x judge using Gemini's OpenAI-compatible endpoint."""
+    from google import genai
+    from openai import AsyncOpenAI
     from ragas.llms import llm_factory
     from ragas.embeddings import GoogleEmbeddings
     from dotenv import load_dotenv
@@ -71,15 +71,18 @@ def build_judge():
         )
         sys.exit(1)
 
-    # Route judge calls through LiteLLM using the dedicated GEMINI_API_KEY_2.
-    # LiteLLM reads GEMINI_API_KEY for the gemini/ provider.
-    os.environ["GEMINI_API_KEY"] = api_key
-    instructor_client = instructor.from_litellm(litellm_completion)
-    judge_llm = llm_factory(f"gemini/{JUDGE_MODEL}", client=instructor_client)
-    judge_embeddings = GoogleEmbeddings(
-        google_api_key=api_key,
-        model="models/embedding-001",
+    # LLM: use Gemini's OpenAI-compatible REST endpoint so RAGAS wraps it with
+    # instructor.from_openai (avoids the instructor/from_genai safety-settings bug).
+    oai_client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
+    judge_llm = llm_factory(JUDGE_MODEL, client=oai_client)
+
+    # Embeddings: native google-genai SDK (embeddings are unaffected by the bug).
+    genai_client = genai.Client(api_key=api_key)
+    judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
+
     return judge_llm, judge_embeddings
 
 
@@ -185,8 +188,6 @@ def _safe_metric(val, default: float = 0.0) -> float:
 
 
 def score_batch(batch: list[dict], judge_llm, judge_embeddings) -> list[dict]:
-    from datasets import Dataset
-    from ragas import evaluate
     from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextPrecision
 
     scoreable = [r for r in batch if r["answer"] and r["contexts"]]
@@ -194,36 +195,31 @@ def score_batch(batch: list[dict], judge_llm, judge_embeddings) -> list[dict]:
 
     scored = []
     if scoreable:
-        ds = Dataset.from_list([
-            {
-                "question":     r["query"],
-                "answer":       r["answer"],
-                "contexts":     r["contexts"],
-                "ground_truth": r["ground_truth"],
-            }
+        # Collections metrics use their own .batch_score() API, not ragas.evaluate().
+        # evaluate() only works with ragas.metrics.Metric subclasses; these inherit
+        # from ragas.metrics.collections.base.BaseMetric which is a different hierarchy.
+        f_metric  = Faithfulness(llm=judge_llm)
+        ar_metric = AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings)
+        cp_metric = ContextPrecision(llm=judge_llm)
+
+        f_results  = f_metric.batch_score([
+            {"user_input": r["query"], "response": r["answer"], "retrieved_contexts": r["contexts"]}
             for r in scoreable
         ])
-        result = evaluate(
-            ds,
-            metrics=[
-                Faithfulness(llm=judge_llm),
-                AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings),
-                ContextPrecision(llm=judge_llm),
-            ],
-            raise_exceptions=False,
-            column_map={
-                "user_input":        "question",
-                "response":          "answer",
-                "retrieved_contexts": "contexts",
-                "reference":         "ground_truth",
-            },
-        )
-        result_df = result.to_pandas()
-        for row, (_, scores) in zip(scoreable, result_df.iterrows()):
+        ar_results = ar_metric.batch_score([
+            {"user_input": r["query"], "response": r["answer"]}
+            for r in scoreable
+        ])
+        cp_results = cp_metric.batch_score([
+            {"user_input": r["query"], "reference": r["ground_truth"], "retrieved_contexts": r["contexts"]}
+            for r in scoreable
+        ])
+
+        for row, f_r, ar_r, cp_r in zip(scoreable, f_results, ar_results, cp_results):
             row = dict(row)
-            row["faithfulness"]      = round(_safe_metric(scores.get("faithfulness")), 3)
-            row["answer_relevancy"]  = round(_safe_metric(scores.get("answer_relevancy")), 3)
-            row["context_precision"] = round(_safe_metric(scores.get("context_precision")), 3)
+            row["faithfulness"]      = round(_safe_metric(f_r.value), 3)
+            row["answer_relevancy"]  = round(_safe_metric(ar_r.value), 3)
+            row["context_precision"] = round(_safe_metric(cp_r.value), 3)
             row["pass"] = (
                 row["faithfulness"]      >= PASS_THRESHOLD
                 and row["answer_relevancy"]  >= PASS_THRESHOLD
