@@ -180,9 +180,11 @@ def score_batch(
         )
         result = evaluate(
             ds,
-            metrics=[Faithfulness(), AnswerRelevancy(), ContextPrecision()],
-            llm=judge_llm,
-            embeddings=judge_embeddings,
+            metrics=[
+                Faithfulness(llm=judge_llm),
+                AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings),
+                ContextPrecision(llm=judge_llm),
+            ],
             raise_exceptions=False,
             column_map={
                 "user_input": "question",
