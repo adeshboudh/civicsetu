@@ -18,6 +18,14 @@ Two independent phases so you never re-invoke the graph just to re-score:
 
 Env-var tuning:
     BATCH_SIZE=3 BATCH_DELAY_SEC=60 EVAL_LIMIT=3 make eval-score
+
+Judge provider (Phase 2):
+    # Gemini free tier — 15 RPM limit (default)
+    JUDGE_PROVIDER=gemini JUDGE_MODEL=gemini-3.1-flash-lite-preview make eval-score
+
+    # OpenRouter free tier — more generous RPM; set OPENROUTER_API_KEY in .env
+    JUDGE_PROVIDER=openrouter JUDGE_MODEL=stepfun/step-3.5-flash:free make eval-score
+    JUDGE_PROVIDER=openrouter make eval-score   # uses stepfun/step-3.5-flash:free by default
 """
 from __future__ import annotations
 
@@ -42,7 +50,16 @@ BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "3"))
 BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60"))
 PASS_THRESHOLD  = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT      = int(os.getenv("EVAL_LIMIT", "0")) or None   # 0 = no limit
-JUDGE_MODEL     = os.getenv("JUDGE_MODEL", "gemini-3.1-flash-lite-preview")
+
+# Judge provider selection:
+#   JUDGE_PROVIDER=gemini      → Gemini OpenAI-compat endpoint (GEMINI_API_KEY_2)
+#   JUDGE_PROVIDER=openrouter  → OpenRouter (OPENROUTER_API_KEY), more generous free tier
+# Default model per provider if JUDGE_MODEL is not set:
+#   gemini     → gemini-3.1-flash-lite-preview
+#   openrouter → stepfun/step-3.5-flash:free
+JUDGE_PROVIDER  = os.getenv("JUDGE_PROVIDER", "gemini")
+_default_model  = "stepfun/step-3.5-flash:free" if JUDGE_PROVIDER == "openrouter" else "gemini-3.1-flash-lite-preview"
+JUDGE_MODEL     = os.getenv("JUDGE_MODEL", _default_model)
 
 ROOT            = Path(__file__).parent.parent
 DATASET_PATH    = ROOT / "eval" / "golden_dataset.jsonl"
@@ -53,7 +70,18 @@ PHASE2_OUT      = ROOT / "eval_results.json"
 # ── RAGAS judge (RAGAS 0.4.x native API via instructor) ───────────────────────
 
 def build_judge():
-    """Build RAGAS 0.4.x judge using Gemini's OpenAI-compatible endpoint."""
+    """
+    Build RAGAS 0.4.x judge LLM + embeddings.
+
+    JUDGE_PROVIDER=gemini (default):
+        LLM via Gemini's OpenAI-compatible endpoint (GEMINI_API_KEY_2).
+        Avoids the instructor/from_genai safety-settings upstream bug.
+
+    JUDGE_PROVIDER=openrouter:
+        LLM via OpenRouter (OPENROUTER_API_KEY).  Free-tier models have
+        more generous RPM limits than Gemini free tier (15 RPM).
+        Embeddings still use Gemini (GEMINI_API_KEY_2) — OpenRouter has none.
+    """
     from google import genai
     from openai import AsyncOpenAI
     from ragas.llms import llm_factory
@@ -62,27 +90,44 @@ def build_judge():
 
     load_dotenv()
 
-    api_key = os.getenv("GEMINI_API_KEY_2")
-    if not api_key:
+    gemini_key = os.getenv("GEMINI_API_KEY_2")
+    if not gemini_key:
         print(
-            "ERROR: GEMINI_API_KEY_2 is not set.\n"
-            "Add it to your .env: GEMINI_API_KEY_2=<your-key>",
+            "ERROR: GEMINI_API_KEY_2 is not set (required for embeddings).\n"
+            "Add it to your .env: GEMINI_API_KEY_2=<your-gemini-key>",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    # LLM: use Gemini's OpenAI-compatible REST endpoint so RAGAS wraps it with
-    # instructor.from_openai (avoids the instructor/from_genai safety-settings bug).
-    oai_client = AsyncOpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-    )
-    # max_tokens=8192: RERA answers produce many NLI statements; the default 1024
-    # is too small and causes instructor to raise IncompleteOutputException.
-    judge_llm = llm_factory(JUDGE_MODEL, client=oai_client, max_tokens=8192)
+    if JUDGE_PROVIDER == "openrouter":
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if not openrouter_key:
+            print(
+                "ERROR: OPENROUTER_API_KEY is not set.\n"
+                "Add it to your .env: OPENROUTER_API_KEY=<your-key>\n"
+                "Or switch back: JUDGE_PROVIDER=gemini",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        llm_client = AsyncOpenAI(
+            api_key=openrouter_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+        print(f"  Judge: OpenRouter / {JUDGE_MODEL}")
+    else:
+        # Gemini OpenAI-compatible endpoint (avoids instructor/from_genai bug)
+        llm_client = AsyncOpenAI(
+            api_key=gemini_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        print(f"  Judge: Gemini / {JUDGE_MODEL}")
 
-    # Embeddings: native google-genai SDK (embeddings are unaffected by the bug).
-    genai_client = genai.Client(api_key=api_key)
+    # max_tokens=8192: RERA answers produce many NLI statements; the RAGAS
+    # default of 1024 causes IncompleteOutputException on complex legal answers.
+    judge_llm = llm_factory(JUDGE_MODEL, client=llm_client, max_tokens=8192)
+
+    # Embeddings: always google-genai (AnswerRelevancy needs semantic similarity).
+    genai_client = genai.Client(api_key=gemini_key)
     judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
 
     return judge_llm, judge_embeddings
