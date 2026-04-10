@@ -53,13 +53,16 @@ PHASE2_OUT      = ROOT / "eval_results.json"
 # ── RAGAS judge (RAGAS 0.4.x native API via instructor) ───────────────────────
 
 def build_judge():
-    """Build RAGAS 0.4.x judge LLM and embeddings using instructor + GoogleEmbeddings."""
-    import google.generativeai as genai
+    """Build RAGAS 0.4.x judge using new google-genai SDK + instructor."""
+    from google import genai          # new SDK: pip install google-genai
     import instructor
     from ragas.llms import llm_factory
     from ragas.embeddings import GoogleEmbeddings
+    from dotenv import load_dotenv
 
-    api_key = os.environ.get("GEMINI_API_KEY_2")
+    load_dotenv()
+
+    api_key = os.getenv("GEMINI_API_KEY_2")
     if not api_key:
         print(
             "ERROR: GEMINI_API_KEY_2 is not set.\n"
@@ -68,10 +71,10 @@ def build_judge():
         )
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
-    google_model = genai.GenerativeModel(model_name=JUDGE_MODEL)
+    # New google-genai SDK: genai.Client, not GenerativeModel
+    client = genai.Client(api_key=api_key)
     instructor_client = instructor.from_gemini(
-        client=google_model,
+        client=client,
         mode=instructor.Mode.GEMINI_JSON,
     )
     judge_llm = llm_factory(JUDGE_MODEL, client=instructor_client)
