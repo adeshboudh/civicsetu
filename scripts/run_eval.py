@@ -20,8 +20,8 @@ Env-var tuning:
     BATCH_SIZE=3 BATCH_DELAY_SEC=60 EVAL_LIMIT=3 make eval-score
 
 Judge provider (Phase 2):
-    # Gemini free tier — 15 RPM limit (default)
-    JUDGE_PROVIDER=gemini JUDGE_MODEL=gemini-3.1-flash-lite-preview make eval-score
+    # Gemini free tier (15 RPM) — default; sleeps BATCH_DELAY_SEC between each metric
+    JUDGE_PROVIDER=gemini BATCH_SIZE=1 BATCH_DELAY_SEC=60 make eval-score
 
     # OpenRouter free tier — more generous RPM; set OPENROUTER_API_KEY in .env
     JUDGE_PROVIDER=openrouter JUDGE_MODEL=stepfun/step-3.5-flash:free make eval-score
@@ -46,7 +46,7 @@ if sys.stdout.encoding != "utf-8":
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 # ── Rate-limit constants (override via env vars) ───────────────────────────────
-BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "3"))
+BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "1"))   # 1 row/batch keeps burst ≤5 calls
 BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60"))
 PASS_THRESHOLD  = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT      = int(os.getenv("EVAL_LIMIT", "0")) or None   # 0 = no limit
@@ -249,14 +249,24 @@ def score_batch(batch: list[dict], judge_llm, judge_embeddings) -> list[dict]:
         ar_metric = AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings)
         cp_metric = ContextPrecision(llm=judge_llm)
 
+        # Sleep BATCH_DELAY_SEC between each metric so the per-minute quota resets.
+        # abatch_score fires all rows concurrently (asyncio.gather), so even with
+        # BATCH_SIZE=1 we get ~2-5 calls per metric. Sleeping 60 s between metrics
+        # keeps us well under Gemini free tier's 15 RPM cap.
         f_results  = f_metric.batch_score([
             {"user_input": r["query"], "response": r["answer"], "retrieved_contexts": r["contexts"]}
             for r in scoreable
         ])
+        print(f"    faithfulness done — sleeping {BATCH_DELAY_SEC}s...", flush=True)
+        time.sleep(BATCH_DELAY_SEC)
+
         ar_results = ar_metric.batch_score([
             {"user_input": r["query"], "response": r["answer"]}
             for r in scoreable
         ])
+        print(f"    answer_relevancy done — sleeping {BATCH_DELAY_SEC}s...", flush=True)
+        time.sleep(BATCH_DELAY_SEC)
+
         cp_results = cp_metric.batch_score([
             {"user_input": r["query"], "reference": r["ground_truth"], "retrieved_contexts": r["contexts"]}
             for r in scoreable
