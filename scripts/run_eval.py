@@ -47,7 +47,7 @@ from civicsetu.models.enums import Jurisdiction
 
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import answer_relevancy, context_precision, faithfulness
+from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextPrecision
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -180,7 +180,7 @@ def score_batch(
         )
         result = evaluate(
             ds,
-            metrics=[faithfulness, answer_relevancy, context_precision],
+            metrics=[Faithfulness(), AnswerRelevancy(), ContextPrecision()],
             llm=judge_llm,
             embeddings=judge_embeddings,
             raise_exceptions=False,
