@@ -59,3 +59,6 @@ frontend/.vercel/
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*
+
+# RAGAS evaluation output
+eval_results.json

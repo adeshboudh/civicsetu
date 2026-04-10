@@ -1,4 +1,4 @@
-.PHONY: help install dev serve ingest lint format typecheck test test-cov e2e docker-up docker-down clean frontend-install frontend-dev frontend-build frontend-start frontend-lint frontend-typecheck
+.PHONY: help install dev serve ingest lint format typecheck test test-cov e2e eval docker-up docker-down clean frontend-install frontend-dev frontend-build frontend-start frontend-lint frontend-typecheck
 
 help:
 	@echo "CivicSetu — available commands:"
@@ -22,6 +22,7 @@ help:
 	@echo "    make test         Run unit test suite"
 	@echo "    make test-cov     Run tests with coverage report"
 	@echo "    make e2e          Run 12-case E2E query benchmark"
+	@echo "    make eval         Run RAGAS quality benchmark (offline, batched)"
 	@echo ""
 	@echo "    make clean        Remove __pycache__ and .pyc files"
 
@@ -58,6 +59,9 @@ test-cov:
 
 e2e:
 	PYTHONUTF8=1 uv run python scripts/test_e2e_queries.py
+
+eval:
+	PYTHONUTF8=1 uv run python scripts/run_eval.py
 
 docker-up:
 	cd infra && docker compose up -d
