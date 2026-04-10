@@ -53,9 +53,9 @@ PHASE2_OUT      = ROOT / "eval_results.json"
 # ── RAGAS judge (RAGAS 0.4.x native API via instructor) ───────────────────────
 
 def build_judge():
-    """Build RAGAS 0.4.x judge using new google-genai SDK + instructor."""
-    from google import genai          # new SDK: pip install google-genai
+    """Build RAGAS 0.4.x judge using LiteLLM + instructor."""
     import instructor
+    from litellm import completion as litellm_completion
     from ragas.llms import llm_factory
     from ragas.embeddings import GoogleEmbeddings
     from dotenv import load_dotenv
@@ -71,13 +71,11 @@ def build_judge():
         )
         sys.exit(1)
 
-    # New google-genai SDK: genai.Client, not GenerativeModel
-    client = genai.Client(api_key=api_key)
-    instructor_client = instructor.from_gemini(
-        client=client,
-        mode=instructor.Mode.GEMINI_JSON,
-    )
-    judge_llm = llm_factory(JUDGE_MODEL, client=instructor_client)
+    # Route judge calls through LiteLLM using the dedicated GEMINI_API_KEY_2.
+    # LiteLLM reads GEMINI_API_KEY for the gemini/ provider.
+    os.environ["GEMINI_API_KEY"] = api_key
+    instructor_client = instructor.from_litellm(litellm_completion)
+    judge_llm = llm_factory(f"gemini/{JUDGE_MODEL}", client=instructor_client)
     judge_embeddings = GoogleEmbeddings(
         google_api_key=api_key,
         model="models/embedding-001",
