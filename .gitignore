@@ -48,6 +48,8 @@ graphify-out/
 stitch/
 stitch.zip
 index.html
+AGENTS.md
+.codex/
 
 # Frontend (Next.js)
 frontend/.env.local
@@ -61,4 +63,5 @@ frontend/yarn-debug.log*
 frontend/yarn-error.log*
 
 # RAGAS evaluation output
+eval_phase1_results.json
 eval_results.json
