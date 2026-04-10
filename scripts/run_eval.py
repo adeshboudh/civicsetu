@@ -42,7 +42,7 @@ BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "3"))
 BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60"))
 PASS_THRESHOLD  = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT      = int(os.getenv("EVAL_LIMIT", "0")) or None   # 0 = no limit
-JUDGE_MODEL     = os.getenv("JUDGE_MODEL", "gemini-2.0-flash-lite")
+JUDGE_MODEL     = os.getenv("JUDGE_MODEL", "gemini-3.1-flash-lite-preview")
 
 ROOT            = Path(__file__).parent.parent
 DATASET_PATH    = ROOT / "eval" / "golden_dataset.jsonl"
@@ -77,7 +77,9 @@ def build_judge():
         api_key=api_key,
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
-    judge_llm = llm_factory(JUDGE_MODEL, client=oai_client)
+    # max_tokens=8192: RERA answers produce many NLI statements; the default 1024
+    # is too small and causes instructor to raise IncompleteOutputException.
+    judge_llm = llm_factory(JUDGE_MODEL, client=oai_client, max_tokens=8192)
 
     # Embeddings: native google-genai SDK (embeddings are unaffected by the bug).
     genai_client = genai.Client(api_key=api_key)
