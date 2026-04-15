@@ -23,6 +23,10 @@ Judge provider (Phase 2):
     # Gemini free tier (15 RPM) — default; sleeps BATCH_DELAY_SEC between each metric
     JUDGE_PROVIDER=gemini BATCH_SIZE=1 BATCH_DELAY_SEC=60 make eval-score
 
+    # Dual Gemini keys — parallel 2-worker mode (~30 RPM effective, default delay=30s)
+    # Set GEMINI_API_KEY_2 + GEMINI_API_KEY_3 in .env; script auto-detects second key.
+    BATCH_SIZE=2 make eval-score
+
     # OpenRouter free tier — more generous RPM; set OPENROUTER_API_KEY in .env
     JUDGE_PROVIDER=openrouter JUDGE_MODEL=stepfun/step-3.5-flash:free make eval-score
     JUDGE_PROVIDER=openrouter make eval-score   # uses stepfun/step-3.5-flash:free by default
@@ -30,12 +34,14 @@ Judge provider (Phase 2):
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import math
 import os
 import sys
 import time
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -46,7 +52,7 @@ if sys.stdout.encoding != "utf-8":
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 # ── Rate-limit constants (override via env vars) ───────────────────────────────
-BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "1"))   # 1 row/batch keeps burst ≤5 calls
+BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "2"))   # 1 row/batch keeps burst ≤5 calls
 BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60"))
 PASS_THRESHOLD  = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT      = int(os.getenv("EVAL_LIMIT", "0")) or None   # 0 = no limit
@@ -67,37 +73,39 @@ PHASE1_OUT      = ROOT / "eval_phase1_results.json"
 PHASE2_OUT      = ROOT / "eval_results.json"
 
 
+# ── Logging helper ─────────────────────────────────────────────────────────────
+
+def _log(msg: str, label: str = "") -> None:
+    ts = datetime.now().strftime("%H:%M:%S")
+    prefix = f"[{ts}]" + (f" [{label}]" if label else "")
+    print(f"{prefix} {msg}", flush=True)
+
+
+def _sleep_log(seconds: int, label: str = "") -> None:
+    resume = datetime.fromtimestamp(time.time() + seconds).strftime("%H:%M:%S")
+    _log(f"sleeping {seconds}s — resuming at {resume}", label)
+    time.sleep(seconds)
+
+
 # ── RAGAS judge (RAGAS 0.4.x native API via instructor) ───────────────────────
 
-def build_judge():
+def build_judge(gemini_key: str):
     """
-    Build RAGAS 0.4.x judge LLM + embeddings.
+    Build RAGAS 0.4.x judge LLM + embeddings for a single API key.
 
     JUDGE_PROVIDER=gemini (default):
-        LLM via Gemini's OpenAI-compatible endpoint (GEMINI_API_KEY_2).
+        LLM via Gemini's OpenAI-compatible endpoint.
         Avoids the instructor/from_genai safety-settings upstream bug.
 
     JUDGE_PROVIDER=openrouter:
         LLM via OpenRouter (OPENROUTER_API_KEY).  Free-tier models have
         more generous RPM limits than Gemini free tier (15 RPM).
-        Embeddings still use Gemini (GEMINI_API_KEY_2) — OpenRouter has none.
+        Embeddings still use Gemini — OpenRouter has none.
     """
     from google import genai
     from openai import AsyncOpenAI
     from ragas.llms import llm_factory
     from ragas.embeddings import GoogleEmbeddings
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    gemini_key = os.getenv("GEMINI_API_KEY_2")
-    if not gemini_key:
-        print(
-            "ERROR: GEMINI_API_KEY_2 is not set (required for embeddings).\n"
-            "Add it to your .env: GEMINI_API_KEY_2=<your-gemini-key>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
     if JUDGE_PROVIDER == "openrouter":
         openrouter_key = os.getenv("OPENROUTER_API_KEY")
@@ -112,6 +120,7 @@ def build_judge():
         llm_client = AsyncOpenAI(
             api_key=openrouter_key,
             base_url="https://openrouter.ai/api/v1",
+            timeout=120.0,  # 2-min cap per call — prevents infinite hangs
         )
         print(f"  Judge: OpenRouter / {JUDGE_MODEL}")
     else:
@@ -119,6 +128,7 @@ def build_judge():
         llm_client = AsyncOpenAI(
             api_key=gemini_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            timeout=120.0,  # 2-min cap per call — prevents infinite hangs
         )
         print(f"  Judge: Gemini / {JUDGE_MODEL}")
 
@@ -131,6 +141,47 @@ def build_judge():
     judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
 
     return judge_llm, judge_embeddings
+
+
+def build_judge_pool() -> list[tuple]:
+    """
+    Build one or two judge (llm, embeddings) pairs.
+
+    Single key  → sequential batching (original behaviour).
+    Two keys    → parallel batching: 2 workers, each with its own client.
+
+    Keys: GEMINI_API_KEY_2 (required), GEMINI_API_KEY_3 (optional second account).
+    """
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    key1 = os.getenv("GEMINI_API_KEY_2")
+    if not key1:
+        print(
+            "ERROR: GEMINI_API_KEY_2 is not set (required for embeddings).\n"
+            "Add it to your .env: GEMINI_API_KEY_2=<your-gemini-key>",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    judges = [build_judge(key1)]
+
+    key2 = os.getenv("GEMINI_API_KEY_3")
+    if key2:
+        print("  Second Gemini key found — parallel batching enabled (2 workers)")
+        judges.append(build_judge(key2))
+
+    return judges
+
+
+def score_batch_in_thread(batch: list[dict], judge_llm, judge_embeddings, label: str = "") -> list[dict]:
+    """Thread-safe wrapper: gives each worker thread its own asyncio event loop."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return score_batch(batch, judge_llm, judge_embeddings, label=label)
+    finally:
+        loop.close()
 
 
 # ── Dataset helpers ────────────────────────────────────────────────────────────
@@ -234,12 +285,13 @@ def _safe_metric(val, default: float = 0.0) -> float:
         return default
 
 
-def score_batch(batch: list[dict], judge_llm, judge_embeddings) -> list[dict]:
+def score_batch(batch: list[dict], judge_llm, judge_embeddings, label: str = "") -> list[dict]:
     from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextPrecision
 
     scoreable = [r for r in batch if r["answer"] and r["contexts"]]
     skipped   = [r for r in batch if not (r["answer"] and r["contexts"])]
 
+    ids = [r["id"] for r in scoreable]
     scored = []
     if scoreable:
         # Collections metrics use their own .batch_score() API, not ragas.evaluate().
@@ -253,24 +305,31 @@ def score_batch(batch: list[dict], judge_llm, judge_embeddings) -> list[dict]:
         # abatch_score fires all rows concurrently (asyncio.gather), so even with
         # BATCH_SIZE=1 we get ~2-5 calls per metric. Sleeping 60 s between metrics
         # keeps us well under Gemini free tier's 15 RPM cap.
+        _log(f"faithfulness    → scoring {ids}", label)
+        t0 = time.perf_counter()
         f_results  = f_metric.batch_score([
             {"user_input": r["query"], "response": r["answer"], "retrieved_contexts": r["contexts"]}
             for r in scoreable
         ])
-        print(f"    faithfulness done — sleeping {BATCH_DELAY_SEC}s...", flush=True)
-        time.sleep(BATCH_DELAY_SEC)
+        _log(f"faithfulness    ✓ done ({time.perf_counter() - t0:.1f}s)", label)
+        _sleep_log(BATCH_DELAY_SEC, label)
 
+        _log(f"answer_relevancy → scoring {ids}", label)
+        t0 = time.perf_counter()
         ar_results = ar_metric.batch_score([
             {"user_input": r["query"], "response": r["answer"]}
             for r in scoreable
         ])
-        print(f"    answer_relevancy done — sleeping {BATCH_DELAY_SEC}s...", flush=True)
-        time.sleep(BATCH_DELAY_SEC)
+        _log(f"answer_relevancy ✓ done ({time.perf_counter() - t0:.1f}s)", label)
+        _sleep_log(BATCH_DELAY_SEC, label)
 
+        _log(f"context_precision → scoring {ids}", label)
+        t0 = time.perf_counter()
         cp_results = cp_metric.batch_score([
             {"user_input": r["query"], "reference": r["ground_truth"], "retrieved_contexts": r["contexts"]}
             for r in scoreable
         ])
+        _log(f"context_precision ✓ done ({time.perf_counter() - t0:.1f}s)", label)
 
         for row, f_r, ar_r, cp_r in zip(scoreable, f_results, ar_results, cp_results):
             row = dict(row)
@@ -344,19 +403,48 @@ def print_summary(all_rows: list[dict]) -> None:
 
 def run_phase2(invoked: list[dict]) -> list[dict]:
     print(f"\nPhase 2: RAGAS scoring {len(invoked)} rows in batches of {BATCH_SIZE}...")
-    judge_llm, judge_embeddings = build_judge()
+    judges = build_judge_pool()
+    num_workers = len(judges)
     all_scored: list[dict] = []
 
     batches = [invoked[i:i + BATCH_SIZE] for i in range(0, len(invoked), BATCH_SIZE)]
-    for batch_num, batch in enumerate(batches, 1):
-        ids = [r["id"] for r in batch]
-        print(f"  Batch {batch_num}/{len(batches)}: {ids} ...", end=" ", flush=True)
-        scored = score_batch(batch, judge_llm, judge_embeddings)
-        all_scored.extend(scored)
-        print("done")
-        if batch_num < len(batches):
-            print(f"  Sleeping {BATCH_DELAY_SEC}s before next batch...")
-            time.sleep(BATCH_DELAY_SEC)
+
+    if num_workers == 1:
+        judge_llm, judge_embeddings = judges[0]
+        for batch_num, batch in enumerate(batches, 1):
+            ids = [r["id"] for r in batch]
+            _log(f"Batch {batch_num}/{len(batches)}: {ids}")
+            scored = score_batch(batch, judge_llm, judge_embeddings, label=f"B{batch_num}")
+            all_scored.extend(scored)
+            _log(f"Batch {batch_num}/{len(batches)} complete")
+            if batch_num < len(batches):
+                _sleep_log(BATCH_DELAY_SEC)
+    else:
+        # Two workers: interleave batches across keys (worker 0 = even, worker 1 = odd).
+        # Each thread runs its own asyncio event loop to avoid cross-thread conflicts.
+        futures: dict = {}
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            for i, batch in enumerate(batches):
+                judge_llm, judge_emb = judges[i % 2]
+                ids = [r["id"] for r in batch]
+                worker_label = f"W{i % 2 + 1}-B{i + 1}"
+                _log(f"Submitting batch {i + 1}/{len(batches)}: {ids} → worker {i % 2 + 1}")
+                f = executor.submit(score_batch_in_thread, batch, judge_llm, judge_emb, worker_label)
+                futures[f] = i
+
+            results: dict[int, list[dict]] = {}
+            for f in as_completed(futures):
+                idx = futures[f]
+                try:
+                    results[idx] = f.result(timeout=300)  # 5-min cap per batch
+                except Exception as exc:
+                    _log(f"Batch {idx + 1} FAILED ({type(exc).__name__}: {exc}) — skipping with zeros")
+                    results[idx] = []
+                else:
+                    _log(f"Batch {idx + 1} complete")
+
+        for i in sorted(results):
+            all_scored.extend(results[i])
 
     print_summary(all_scored)
 
