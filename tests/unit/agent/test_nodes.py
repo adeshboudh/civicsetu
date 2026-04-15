@@ -273,9 +273,7 @@ def test_get_ranker_uses_settings_model():
     with patch("civicsetu.agent.nodes.settings") as mock_settings:
         mock_settings.reranker_model = "rank-T5-flan"
         with patch("flashrank.Ranker") as MockRanker:
-            mock_instance = MagicMock()
-            mock_instance.__class__.__module__ = "flashrank"
-            MockRanker.return_value = mock_instance
+            MockRanker.return_value = MagicMock()
             nodes_mod._get_ranker()
             MockRanker.assert_called_once_with(
                 model_name="rank-T5-flan", cache_dir=".cache/flashrank"
