@@ -37,7 +37,7 @@ def _get_ranker():
         return _ranker
 
     from flashrank import Ranker
-    ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=".cache/flashrank")
+    ranker = Ranker(model_name=settings.reranker_model, cache_dir=".cache/flashrank")
 
     # Do not cache unittest mocks, otherwise tests that patch Ranker bleed into each other.
     if type(ranker).__module__ != "unittest.mock":

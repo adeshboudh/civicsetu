@@ -260,3 +260,24 @@ def test_generator_system_prompt_includes_query_type_tone_hint(query_type, expec
         generator_node(state)
 
     assert expected_hint in captured["system"]
+
+
+# ── _get_ranker uses settings model ──────────────────────────────────────────
+
+def test_get_ranker_uses_settings_model():
+    """_get_ranker() must pass settings.reranker_model to Ranker constructor."""
+    import civicsetu.agent.nodes as nodes_mod
+    from unittest.mock import patch, MagicMock
+    nodes_mod._ranker = None  # clear module-level cache
+
+    with patch("civicsetu.agent.nodes.settings") as mock_settings:
+        mock_settings.reranker_model = "rank-T5-flan"
+        with patch("flashrank.Ranker") as MockRanker:
+            mock_instance = MagicMock()
+            mock_instance.__class__.__module__ = "flashrank"
+            MockRanker.return_value = mock_instance
+            nodes_mod._get_ranker()
+            MockRanker.assert_called_once_with(
+                model_name="rank-T5-flan", cache_dir=".cache/flashrank"
+            )
+    nodes_mod._ranker = None  # clean up
