@@ -89,9 +89,14 @@ def _sleep_log(seconds: int, label: str = "") -> None:
 
 # ── RAGAS judge (RAGAS 0.4.x native API via instructor) ───────────────────────
 
-def build_judge(gemini_key: str):
+def build_judge(gemini_key: str, shared_genai_client=None):
     """
-    Build RAGAS 0.4.x judge LLM + embeddings for a single API key.
+    Build RAGAS 0.4.x judge LLM + embeddings.
+
+    shared_genai_client: pass a pre-created genai.Client to avoid creating a
+    second one in the same process. The google-genai SDK holds global auth
+    state — creating two Client instances with different keys causes "Multiple
+    authentication credentials received" errors on the OpenAI-compat endpoint.
 
     JUDGE_PROVIDER=gemini (default):
         LLM via Gemini's OpenAI-compatible endpoint.
@@ -120,15 +125,17 @@ def build_judge(gemini_key: str):
         llm_client = AsyncOpenAI(
             api_key=openrouter_key,
             base_url="https://openrouter.ai/api/v1",
-            timeout=120.0,  # 2-min cap per call — prevents infinite hangs
         )
         print(f"  Judge: OpenRouter / {JUDGE_MODEL}")
     else:
-        # Gemini OpenAI-compatible endpoint (avoids instructor/from_genai bug)
+        # Gemini OpenAI-compatible endpoint (avoids instructor/from_genai bug).
+        # No timeout= here — the google-genai SDK intercepts requests to
+        # generativelanguage.googleapis.com and a custom httpx client
+        # can disrupt that integration causing auth conflicts.
+        # Hang protection comes from f.result(timeout=300) in run_phase2.
         llm_client = AsyncOpenAI(
             api_key=gemini_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            timeout=120.0,  # 2-min cap per call — prevents infinite hangs
         )
         print(f"  Judge: Gemini / {JUDGE_MODEL}")
 
@@ -137,7 +144,9 @@ def build_judge(gemini_key: str):
     judge_llm = llm_factory(JUDGE_MODEL, client=llm_client, max_tokens=8192)
 
     # Embeddings: always google-genai (AnswerRelevancy needs semantic similarity).
-    genai_client = genai.Client(api_key=gemini_key)
+    # Reuse shared_genai_client when provided — only one genai.Client per process
+    # to avoid global auth state conflicts between parallel workers.
+    genai_client = shared_genai_client or genai.Client(api_key=gemini_key)
     judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
 
     return judge_llm, judge_embeddings
@@ -148,11 +157,16 @@ def build_judge_pool() -> list[tuple]:
     Build one or two judge (llm, embeddings) pairs.
 
     Single key  → sequential batching (original behaviour).
-    Two keys    → parallel batching: 2 workers, each with its own client.
+    Two keys    → parallel batching: 2 workers, each with its own LLM client.
 
     Keys: GEMINI_API_KEY_2 (required), GEMINI_API_KEY_3 (optional second account).
+
+    Both workers share a single genai.Client for embeddings — the google-genai
+    SDK holds process-level global auth state, so creating two Client instances
+    with different keys causes "Multiple authentication credentials" 400 errors.
     """
     from dotenv import load_dotenv
+    from google import genai
     load_dotenv()
 
     key1 = os.getenv("GEMINI_API_KEY_2")
@@ -164,12 +178,15 @@ def build_judge_pool() -> list[tuple]:
         )
         sys.exit(1)
 
-    judges = [build_judge(key1)]
+    # One shared genai.Client for all workers — prevents global auth conflicts.
+    shared_genai_client = genai.Client(api_key=key1)
+
+    judges = [build_judge(key1, shared_genai_client=shared_genai_client)]
 
     key2 = os.getenv("GEMINI_API_KEY_3")
     if key2:
         print("  Second Gemini key found — parallel batching enabled (2 workers)")
-        judges.append(build_judge(key2))
+        judges.append(build_judge(key2, shared_genai_client=shared_genai_client))
 
     return judges
 
