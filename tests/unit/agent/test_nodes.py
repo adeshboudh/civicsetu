@@ -331,3 +331,101 @@ def test_score_gap_gap_at_first_pair():
     result = _apply_score_gap(chunks, gap=0.35)
     assert len(result) == 1
     assert result[0].rerank_score == 0.90
+
+
+# ── reranker_node threshold + gap filtering ───────────────────────────────────
+
+def test_reranker_drops_below_threshold():
+    """Chunks scoring below reranker_score_threshold must not appear in output."""
+    from civicsetu.agent.nodes import reranker_node
+    from unittest.mock import patch, MagicMock
+
+    c_high = _make_rc(section_id="1")
+    c_low  = _make_rc(section_id="2")
+
+    mock_results = [
+        {"id": 0, "score": 0.80},   # above 0.3 threshold
+        {"id": 1, "score": 0.10},   # below 0.3 threshold → dropped
+    ]
+    with patch("flashrank.Ranker") as MockRanker:
+        instance = MockRanker.return_value
+        instance.rerank.return_value = mock_results
+        with patch("civicsetu.agent.nodes.settings") as ms:
+            ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
+            ms.reranker_score_threshold = 0.3
+            ms.reranker_score_gap = 0.35
+            state = _base_state(
+                retrieved_chunks=[c_high, c_low],
+                reranked_chunks=[],
+                query="test query",
+            )
+            result = reranker_node(state)
+
+    section_ids = [c.chunk.section_id for c in result["reranked_chunks"]]
+    assert "1" in section_ids
+    assert "2" not in section_ids
+
+
+def test_reranker_applies_score_gap():
+    """A large score cliff stops inclusion even if remaining chunks exceed threshold."""
+    from civicsetu.agent.nodes import reranker_node
+    from unittest.mock import patch, MagicMock
+
+    c1 = _make_rc(section_id="1")
+    c2 = _make_rc(section_id="2")
+    c3 = _make_rc(section_id="3")
+
+    # gap between id=1 (0.82) and id=2 (0.40) = 0.42 >= 0.35 → id=2 dropped
+    mock_results = [
+        {"id": 0, "score": 0.88},
+        {"id": 1, "score": 0.82},
+        {"id": 2, "score": 0.40},
+    ]
+    with patch("flashrank.Ranker") as MockRanker:
+        instance = MockRanker.return_value
+        instance.rerank.return_value = mock_results
+        with patch("civicsetu.agent.nodes.settings") as ms:
+            ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
+            ms.reranker_score_threshold = 0.3
+            ms.reranker_score_gap = 0.35
+            state = _base_state(
+                retrieved_chunks=[c1, c2, c3],
+                reranked_chunks=[],
+                query="test query",
+            )
+            result = reranker_node(state)
+
+    section_ids = [c.chunk.section_id for c in result["reranked_chunks"]]
+    assert "1" in section_ids
+    assert "2" in section_ids
+    assert "3" not in section_ids
+
+
+def test_reranker_filtered_count_logged():
+    """Reranker produces correct output when one chunk is filtered out."""
+    from civicsetu.agent.nodes import reranker_node
+    from unittest.mock import patch, MagicMock
+
+    c1 = _make_rc(section_id="1")
+    c2 = _make_rc(section_id="2")
+
+    mock_results = [
+        {"id": 0, "score": 0.80},
+        {"id": 1, "score": 0.05},  # dropped below threshold
+    ]
+    with patch("flashrank.Ranker") as MockRanker:
+        instance = MockRanker.return_value
+        instance.rerank.return_value = mock_results
+        with patch("civicsetu.agent.nodes.settings") as ms:
+            ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
+            ms.reranker_score_threshold = 0.3
+            ms.reranker_score_gap = 0.35
+            state = _base_state(
+                retrieved_chunks=[c1, c2],
+                reranked_chunks=[],
+                query="test query",
+            )
+            result = reranker_node(state)
+
+    assert len(result["reranked_chunks"]) == 1
+    assert result["reranked_chunks"][0].chunk.section_id == "1"

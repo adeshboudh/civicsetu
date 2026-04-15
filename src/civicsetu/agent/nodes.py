@@ -378,8 +378,27 @@ def reranker_node(state: CivicSetuState) -> dict:
             chunk.rerank_score = round(float(r["score"]), 4)
             reranked_rankable.append(chunk)
 
+        # Filter 1: drop chunks below the absolute score threshold
+        above_threshold = [
+            c for c in reranked_rankable
+            if (c.rerank_score or 0.0) >= settings.reranker_score_threshold
+        ]
+
+        # Filter 2: stop at the first large score cliff (dynamic top-k)
+        gap_filtered = _apply_score_gap(above_threshold, settings.reranker_score_gap)
+
+        dropped = len(reranked_rankable) - len(gap_filtered)
+        log.info(
+            "reranker_filtered",
+            before=len(reranked_rankable),
+            after=len(gap_filtered),
+            dropped=dropped,
+            threshold=settings.reranker_score_threshold,
+            gap=settings.reranker_score_gap,
+        )
+
         slots_for_ranked = max(0, 5 - len(pinned))
-        reranked = pinned + reranked_rankable[:slots_for_ranked]
+        reranked = pinned + gap_filtered[:slots_for_ranked]
 
 
     except Exception as e:
