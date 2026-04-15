@@ -18,6 +18,23 @@ def test_reranker_settings_defaults():
     assert s.reranker_score_threshold == 0.3
     assert s.reranker_score_gap == 0.35
 
+
+def test_reranker_settings_env_override(monkeypatch):
+    """Env vars must override reranker defaults at runtime."""
+    from civicsetu.config.settings import Settings, get_settings
+    get_settings.cache_clear()  # clear lru_cache so new Settings() is fresh
+
+    monkeypatch.setenv("RERANKER_MODEL", "ms-marco-electra-base")
+    monkeypatch.setenv("RERANKER_SCORE_THRESHOLD", "0.5")
+    monkeypatch.setenv("RERANKER_SCORE_GAP", "0.4")
+
+    s = Settings()
+    assert s.reranker_model == "ms-marco-electra-base"
+    assert s.reranker_score_threshold == 0.5
+    assert s.reranker_score_gap == 0.4
+
+    get_settings.cache_clear()  # leave cache clean for other tests
+
 # ── reranker_node ─────────────────────────────────────────────────────────────
 
 def test_reranker_empty_chunks():
