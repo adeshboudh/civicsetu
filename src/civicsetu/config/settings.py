@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     )
     hf_token: str = Field(default="", alias="HF_TOKEN")
 
+    # Reranker
+    reranker_model: str = Field(default="rank-T5-flan", alias="RERANKER_MODEL")
+    reranker_score_threshold: float = Field(default=0.3, alias="RERANKER_SCORE_THRESHOLD")
+    reranker_score_gap: float = Field(default=0.35, alias="RERANKER_SCORE_GAP")
+
     # PostgreSQL
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")

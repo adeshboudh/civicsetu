@@ -8,6 +8,16 @@ import pytest
 
 from tests.conftest import _make_rc, _base_state
 
+# ── settings defaults ─────────────────────────────────────────────────────────
+
+def test_reranker_settings_defaults():
+    """Settings ship with safe, sensible defaults — no .env needed."""
+    from civicsetu.config.settings import Settings
+    s = Settings()
+    assert s.reranker_model == "rank-T5-flan"
+    assert s.reranker_score_threshold == 0.3
+    assert s.reranker_score_gap == 0.35
+
 # ── reranker_node ─────────────────────────────────────────────────────────────
 
 def test_reranker_empty_chunks():
