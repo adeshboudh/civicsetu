@@ -309,7 +309,24 @@ def graph_retrieval_node(state: CivicSetuState) -> dict:
         
     log.info("node_timing", node="graph_retrieval", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), results=len(chunks))
     return {"retrieved_chunks": chunks}
-    
+
+
+def _apply_score_gap(chunks: list[RetrievedChunk], gap: float) -> list[RetrievedChunk]:
+    """
+    Returns a prefix of `chunks` (assumed sorted by rerank_score descending).
+    Stops as soon as the drop from one chunk to the next meets or exceeds `gap`.
+    Example: gap=0.35, scores=[0.88, 0.82, 0.40] → returns first 2 (0.82→0.40 = 0.42 >= 0.35).
+    """
+    if len(chunks) <= 1:
+        return list(chunks)
+    result = [chunks[0]]
+    for prev, curr in zip(chunks, chunks[1:]):
+        if (prev.rerank_score or 0.0) - (curr.rerank_score or 0.0) >= gap:
+            break
+        result.append(curr)
+    return result
+
+
 # ── Node 3: Reranker ───────────────────────────────────────────────────────────
 
 def reranker_node(state: CivicSetuState) -> dict:

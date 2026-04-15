@@ -279,3 +279,55 @@ def test_get_ranker_uses_settings_model():
                 model_name="rank-T5-flan", cache_dir=".cache/flashrank"
             )
     nodes_mod._ranker = None  # clean up
+
+
+# ── _apply_score_gap ──────────────────────────────────────────────────────────
+
+def test_score_gap_empty():
+    from civicsetu.agent.nodes import _apply_score_gap
+    assert _apply_score_gap([], gap=0.35) == []
+
+
+def test_score_gap_single():
+    from civicsetu.agent.nodes import _apply_score_gap
+    c = _make_rc(rerank_score=0.8)
+    assert _apply_score_gap([c], gap=0.35) == [c]
+
+
+def test_score_gap_no_gap():
+    """All chunks pass when consecutive drops are below the gap threshold."""
+    from civicsetu.agent.nodes import _apply_score_gap
+    chunks = [
+        _make_rc(rerank_score=0.85),
+        _make_rc(rerank_score=0.75),
+        _make_rc(rerank_score=0.65),
+    ]
+    result = _apply_score_gap(chunks, gap=0.35)
+    assert len(result) == 3
+
+
+def test_score_gap_stops_at_cliff():
+    """Stops after the chunk BEFORE the large drop."""
+    from civicsetu.agent.nodes import _apply_score_gap
+    chunks = [
+        _make_rc(rerank_score=0.88),
+        _make_rc(rerank_score=0.82),
+        _make_rc(rerank_score=0.40),  # gap from prev = 0.42 >= 0.35 → stop before this
+        _make_rc(rerank_score=0.35),
+    ]
+    result = _apply_score_gap(chunks, gap=0.35)
+    assert len(result) == 2
+    assert result[0].rerank_score == 0.88
+    assert result[1].rerank_score == 0.82
+
+
+def test_score_gap_gap_at_first_pair():
+    """If the very first pair has a cliff, only the top chunk is kept."""
+    from civicsetu.agent.nodes import _apply_score_gap
+    chunks = [
+        _make_rc(rerank_score=0.90),
+        _make_rc(rerank_score=0.40),
+    ]
+    result = _apply_score_gap(chunks, gap=0.35)
+    assert len(result) == 1
+    assert result[0].rerank_score == 0.90
