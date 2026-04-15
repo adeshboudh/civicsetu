@@ -176,6 +176,8 @@ def build_judge_pool() -> list[tuple]:
 
 def score_batch_in_thread(batch: list[dict], judge_llm, judge_embeddings, label: str = "") -> list[dict]:
     """Thread-safe wrapper: gives each worker thread its own asyncio event loop."""
+    ids = [r["id"] for r in batch]
+    _log(f"starting {ids}", label)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
