@@ -402,7 +402,7 @@ def test_reranker_applies_score_gap():
 
 
 def test_reranker_filtered_count_logged():
-    """Reranker produces correct output when one chunk is filtered out."""
+    """reranker_filtered log event must report correct before/after/dropped counts."""
     from civicsetu.agent.nodes import reranker_node
     from unittest.mock import patch, MagicMock
 
@@ -420,12 +420,22 @@ def test_reranker_filtered_count_logged():
             ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
             ms.reranker_score_threshold = 0.3
             ms.reranker_score_gap = 0.35
-            state = _base_state(
-                retrieved_chunks=[c1, c2],
-                reranked_chunks=[],
-                query="test query",
-            )
-            result = reranker_node(state)
+            with patch("civicsetu.agent.nodes.log") as mock_log:
+                state = _base_state(
+                    retrieved_chunks=[c1, c2],
+                    reranked_chunks=[],
+                    query="test query",
+                )
+                result = reranker_node(state)
 
+    # Verify reranked_chunks output
     assert len(result["reranked_chunks"]) == 1
     assert result["reranked_chunks"][0].chunk.section_id == "1"
+
+    # Verify the reranker_filtered log event was emitted with correct counts
+    log_calls = {call.args[0]: call.kwargs for call in mock_log.info.call_args_list}
+    assert "reranker_filtered" in log_calls, "reranker_filtered log event not emitted"
+    rf = log_calls["reranker_filtered"]
+    assert rf["before"] == 2
+    assert rf["after"] == 1
+    assert rf["dropped"] == 1
