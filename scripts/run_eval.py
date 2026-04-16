@@ -1,10 +1,8 @@
 """
-CivicSetu RAGAS evaluation — single pass, no phases.
+CivicSetu RAGAS evaluation — two checkpointed phases.
 
-  1. Load golden dataset
-  2. Invoke RAG graph for every query (collect answers + contexts)
-  3. Score all rows at once with RAGAS (3 batch_score calls total)
-  4. Print summary + save eval_results.json
+  Phase 1: Invoke RAG graph for every query → save to eval_phase1_results.json
+  Phase 2: Score results with RAGAS (Faithfulness, AnswerRelevancy, ContextPrecision)
 
 Usage:
     uv run python scripts/run_eval.py
@@ -19,6 +17,16 @@ Graph LLM override — routes graph through osmapi before civicsetu is imported:
 
 Judge (RAGAS scorer) model:
     JUDGE_MODEL=qwen3.5-397b-a17b uv run python scripts/run_eval.py
+
+Resume after phase 2 failure (phase 1 cached in eval_phase1_results.json):
+    uv run python scripts/run_eval.py
+    # Phase 1 prints "all N rows loaded from cache" and is skipped
+
+Force re-run phase 1:
+    rm eval_phase1_results.json && uv run python scripts/run_eval.py
+
+Disable no_reasoning (not recommended for Qwen3 thinking models):
+    NO_REASONING=false uv run python scripts/run_eval.py
 """
 from __future__ import annotations
 
@@ -31,6 +39,10 @@ import io
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
+from dotenv import load_dotenv
+load_dotenv()
+
 if sys.stdout.encoding != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
@@ -40,10 +52,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 ROOT         = Path(__file__).parent.parent
 DATASET_PATH = ROOT / "eval" / "golden_dataset.jsonl"
 OUTPUT_PATH  = ROOT / "eval_results.json"
+PHASE1_OUTPUT = ROOT / "eval_phase1_results.json"
 
 PASS_THRESHOLD      = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT          = int(os.getenv("EVAL_LIMIT", "0")) or None
 JUDGE_MODEL         = os.getenv("JUDGE_MODEL", "qwen3.5-122b-a10b")
+NO_REASONING        = os.getenv("NO_REASONING", "true").lower() == "true"
 
 # Graph LLM override — osmapi model name only (e.g. "qwen3.5-122b-a10b")
 # When set, all graph calls route through osmapi via LiteLLM's openai-compat provider.
@@ -62,13 +76,26 @@ def load_dataset(path: Path) -> list[dict]:
 
 # ── Judge setup ────────────────────────────────────────────────────────────────
 
+class _NoReasoningTransport(httpx.AsyncBaseTransport):
+    def __init__(self, wrapped: httpx.AsyncBaseTransport) -> None:
+        self._wrapped = wrapped
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        ct = request.headers.get("content-type", "")
+        if "application/json" in ct and request.content:
+            import json as _json
+            body = _json.loads(request.content)
+            body.setdefault("no_reasoning", True)
+            content = _json.dumps(body).encode()
+            request = request.copy(content=content)
+        return await self._wrapped.handle_async_request(request)
+
+
 def build_judge():
     """
     LLM  : osmapi (OSMAPI_API_KEY) — OpenAI-compatible endpoint.
     Embed: Google GenAI (GEMINI_API_KEY_2) — needed for AnswerRelevancy.
     """
-    from dotenv import load_dotenv
-    load_dotenv()
 
     from openai import AsyncOpenAI
     from ragas.llms import llm_factory
@@ -85,11 +112,22 @@ def build_judge():
         print("ERROR: GEMINI_API_KEY_2 not set in .env (needed for embeddings)", file=sys.stderr)
         sys.exit(1)
 
-    llm_client = AsyncOpenAI(
-        api_key=osmapi_key,
-        base_url="https://api.osmapi.com/v1",
-        timeout=120.0,
-    )
+    if NO_REASONING:
+        _base_transport = httpx.AsyncHTTPTransport()
+        _http_client = httpx.AsyncClient(transport=_NoReasoningTransport(_base_transport))
+        llm_client = AsyncOpenAI(
+            api_key=osmapi_key,
+            base_url="https://api.osmapi.com/v1",
+            timeout=120.0,
+            http_client=_http_client,
+        )
+    else:
+        llm_client = AsyncOpenAI(
+            api_key=osmapi_key,
+            base_url="https://api.osmapi.com/v1",
+            timeout=120.0,
+        )
+
     judge_llm        = llm_factory(JUDGE_MODEL, client=llm_client, max_tokens=8192)
     judge_embeddings = GoogleEmbeddings(
         client=genai.Client(api_key=gemini_key),
@@ -98,6 +136,7 @@ def build_judge():
 
     print(f"  Judge LLM  : osmapi / {JUDGE_MODEL}")
     print(f"  Embeddings : Google gemini-embedding-001")
+    print(f"  no_reasoning : {NO_REASONING}")
     return judge_llm, judge_embeddings
 
 
@@ -162,6 +201,49 @@ def invoke_graph(graph, row: dict) -> dict:
     }
 
 
+# ── Phase 1: graph invocation with checkpointing ───────────────────────────────
+
+def run_phase1(rows: list[dict], graph) -> list[dict]:
+    """Invoke graph for each row, checkpointing after every row to PHASE1_OUTPUT."""
+    n = len(rows)
+
+    if PHASE1_OUTPUT.exists():
+        cached = json.loads(PHASE1_OUTPUT.read_text(encoding="utf-8"))
+        done: dict[str, dict] = {r["id"]: r for r in cached}
+        if all(row["id"] in done for row in rows):
+            print(f"Phase 1: all {n} rows loaded from cache")
+            return [done[row["id"]] for row in rows]
+        else:
+            print(f"Phase 1: resuming — {len(done)} rows cached, {n - len(done)} remaining")
+    else:
+        done = {}
+
+    results: list[dict] = [done[row["id"]] for row in rows if row["id"] in done]
+
+    for i, row in enumerate(rows, 1):
+        if row["id"] in done:
+            print(f"  [{i:02}/{n}] {row['id']} — cached")
+            continue
+
+        result = invoke_graph(graph, row)
+        results.append(result)
+        done[row["id"]] = result
+
+        status = "OK" if result["answer"] else "EMPTY"
+        conf = result["confidence_score"]
+        latency = result["latency_ms"]
+        print(f"  [{i:02}/{n}] {row['id']} … {status} ({latency:.0f}ms conf={conf})")
+
+        # Checkpoint immediately after each row
+        PHASE1_OUTPUT.write_text(
+            json.dumps(list(done.values()), indent=2, default=str),
+            encoding="utf-8",
+        )
+
+    # Return in original row order
+    return [done[row["id"]] for row in rows]
+
+
 # ── RAGAS scoring ──────────────────────────────────────────────────────────────
 
 def _safe(val, default: float = 0.0) -> float:
@@ -172,12 +254,12 @@ def _safe(val, default: float = 0.0) -> float:
         return default
 
 
-def score_all(rows: list[dict], judge_llm, judge_embeddings) -> list[dict]:
+def run_phase2(invoked: list[dict], judge_llm, judge_embeddings) -> list[dict]:
     """Score all rows at once — 3 batch_score calls total (one per metric)."""
     from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextPrecision
 
-    scoreable = [r for r in rows if r["answer"] and r["contexts"]]
-    skipped   = [r for r in rows if not (r["answer"] and r["contexts"])]
+    scoreable = [r for r in invoked if r["answer"] and r["contexts"]]
+    skipped   = [r for r in invoked if not (r["answer"] and r["contexts"])]
 
     if skipped:
         print(f"  Skipping {len(skipped)} rows (no answer/context): "
@@ -225,7 +307,7 @@ def score_all(rows: list[dict], judge_llm, judge_embeddings) -> list[dict]:
         scored_map[row["id"]] = row
 
     result = []
-    for row in rows:
+    for row in invoked:
         if row["id"] not in scored_map:
             row = dict(row)
             row["faithfulness"] = row["answer_relevancy"] = row["context_precision"] = 0.0
@@ -234,6 +316,11 @@ def score_all(rows: list[dict], judge_llm, judge_embeddings) -> list[dict]:
             row = scored_map[row["id"]]
         result.append(row)
     return result
+
+
+# Keep original name as alias for any external callers
+def score_all(rows: list[dict], judge_llm, judge_embeddings) -> list[dict]:
+    return run_phase2(rows, judge_llm, judge_embeddings)
 
 
 # ── Summary ────────────────────────────────────────────────────────────────────
@@ -302,7 +389,7 @@ def main() -> None:
 
     print(f"CivicSetu RAGAS Eval — {len(rows)} queries | judge={JUDGE_MODEL} | threshold={PASS_THRESHOLD}")
 
-    # ── Step 1: collect ────────────────────────────────────────────────────────
+    # ── EVAL_PRIMARY_MODEL override block — do not touch ──────────────────────
     # Apply graph LLM overrides BEFORE importing civicsetu.
     # nodes.py builds FALLBACK_MODELS at module import time from settings,
     # so env vars must be set before the first import of civicsetu.agent.graph.
@@ -331,19 +418,12 @@ def main() -> None:
     from civicsetu.agent.graph import get_compiled_graph
     graph = get_compiled_graph()
 
-    print(f"\nStep 1/2 — invoking graph ({len(rows)} queries)...")
-    invoked: list[dict] = []
-    for i, row in enumerate(rows, 1):
-        print(f"  [{i:02}/{len(rows)}] {row['id']} ...", end=" ", flush=True)
-        result = invoke_graph(graph, row)
-        invoked.append(result)
-        status = "OK" if result["answer"] else "EMPTY"
-        print(f"{status}  ({result['latency_ms']:.0f}ms  conf={result['confidence_score']})")
+    print(f"\nStep 1/2 — Graph invocation (phase 1)...")
+    invoked = run_phase1(rows, graph)
 
-    # ── Step 2: score ──────────────────────────────────────────────────────────
-    print(f"\nStep 2/2 — RAGAS scoring (3 batch calls)...")
+    print(f"\nStep 2/2 — RAGAS scoring (phase 2)...")
     judge_llm, judge_embeddings = build_judge()
-    scored = score_all(invoked, judge_llm, judge_embeddings)
+    scored = run_phase2(invoked, judge_llm, judge_embeddings)
 
     # ── Save + print ───────────────────────────────────────────────────────────
     print_summary(scored)
