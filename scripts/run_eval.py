@@ -57,15 +57,11 @@ BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60"))
 PASS_THRESHOLD  = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT      = int(os.getenv("EVAL_LIMIT", "0")) or None   # 0 = no limit
 
-# Judge provider selection:
-#   JUDGE_PROVIDER=gemini      → Gemini OpenAI-compat endpoint (GEMINI_API_KEY_2)
-#   JUDGE_PROVIDER=openrouter  → OpenRouter (OPENROUTER_API_KEY), more generous free tier
-# Default model per provider if JUDGE_MODEL is not set:
-#   gemini     → gemini-3.1-flash-lite-preview
-#   openrouter → stepfun/step-3.5-flash:free
-JUDGE_PROVIDER  = os.getenv("JUDGE_PROVIDER", "gemini")
-_default_model  = "stepfun/step-3.5-flash:free" if JUDGE_PROVIDER == "openrouter" else "gemini-3.1-flash-lite-preview"
-JUDGE_MODEL     = os.getenv("JUDGE_MODEL", _default_model)
+# Judge provider: osmapi (OSMAPI_API_KEY) — active
+# Embeddings:     google-genai (GEMINI_API_KEY_2) — still needed for AnswerRelevancy
+# Previous providers (commented out in build_judge): gemini, openrouter
+JUDGE_PROVIDER  = os.getenv("JUDGE_PROVIDER", "osmapi")
+JUDGE_MODEL     = os.getenv("JUDGE_MODEL", "qwen3.5-122b-a10b")
 
 ROOT            = Path(__file__).parent.parent
 DATASET_PATH    = ROOT / "eval" / "golden_dataset.jsonl"
@@ -91,52 +87,57 @@ def _sleep_log(seconds: int, label: str = "") -> None:
 
 def build_judge(gemini_key: str):
     """
-    Build RAGAS 0.4.x judge LLM + embeddings for a single API key.
+    Build RAGAS 0.4.x judge LLM + embeddings.
 
-    JUDGE_PROVIDER=gemini (default):
-        LLM via Gemini's OpenAI-compatible endpoint.
-        Avoids the instructor/from_genai safety-settings upstream bug.
+    LLM: osmapi (OSMAPI_API_KEY) — OpenAI-compatible endpoint, free credits.
+    Embeddings: Google GenAI (GEMINI_API_KEY_2) — AnswerRelevancy needs semantic similarity.
 
-    JUDGE_PROVIDER=openrouter:
-        LLM via OpenRouter (OPENROUTER_API_KEY).  Free-tier models have
-        more generous RPM limits than Gemini free tier (15 RPM).
-        Embeddings still use Gemini — OpenRouter has none.
+    # ── Previously used providers (commented out) ──────────────────────────
+    # JUDGE_PROVIDER=gemini:
+    #     llm_client = AsyncOpenAI(
+    #         api_key=gemini_key,
+    #         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    #         timeout=120.0,
+    #     )
+    #     print(f"  Judge: Gemini / {JUDGE_MODEL}")
+    #
+    # JUDGE_PROVIDER=openrouter:
+    #     openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    #     llm_client = AsyncOpenAI(
+    #         api_key=openrouter_key,
+    #         base_url="https://openrouter.ai/api/v1",
+    #         timeout=120.0,
+    #     )
+    #     print(f"  Judge: OpenRouter / {JUDGE_MODEL}")
+    # ───────────────────────────────────────────────────────────────────────
     """
     from google import genai
     from openai import AsyncOpenAI
     from ragas.llms import llm_factory
     from ragas.embeddings import GoogleEmbeddings
 
-    if JUDGE_PROVIDER == "openrouter":
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        if not openrouter_key:
-            print(
-                "ERROR: OPENROUTER_API_KEY is not set.\n"
-                "Add it to your .env: OPENROUTER_API_KEY=<your-key>\n"
-                "Or switch back: JUDGE_PROVIDER=gemini",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        llm_client = AsyncOpenAI(
-            api_key=openrouter_key,
-            base_url="https://openrouter.ai/api/v1",
-            timeout=120.0,  # 2-min cap per call — prevents infinite hangs
+    osmapi_key = os.getenv("OSMAPI_API_KEY")
+    if not osmapi_key:
+        print(
+            "ERROR: OSMAPI_API_KEY is not set.\n"
+            "Add it to your .env: OSMAPI_API_KEY=<your-key>",
+            file=sys.stderr,
         )
-        print(f"  Judge: OpenRouter / {JUDGE_MODEL}")
-    else:
-        # Gemini OpenAI-compatible endpoint (avoids instructor/from_genai bug)
-        llm_client = AsyncOpenAI(
-            api_key=gemini_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            timeout=120.0,  # 2-min cap per call — prevents infinite hangs
-        )
-        print(f"  Judge: Gemini / {JUDGE_MODEL}")
+        sys.exit(1)
+
+    llm_client = AsyncOpenAI(
+        api_key=osmapi_key,
+        base_url="https://api.osmapi.com/v1",
+        timeout=120.0,  # 2-min cap per call — prevents infinite hangs
+    )
+    print(f"  Judge: osmapi / {JUDGE_MODEL}")
 
     # max_tokens=8192: RERA answers produce many NLI statements; the RAGAS
     # default of 1024 causes IncompleteOutputException on complex legal answers.
     judge_llm = llm_factory(JUDGE_MODEL, client=llm_client, max_tokens=8192)
 
-    # Embeddings: always google-genai (AnswerRelevancy needs semantic similarity).
+    # Embeddings: google-genai (AnswerRelevancy needs semantic similarity;
+    # osmapi has no embedding endpoint).
     genai_client = genai.Client(api_key=gemini_key)
     judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
 
