@@ -8,8 +8,16 @@ CivicSetu RAGAS evaluation — single pass, no phases.
 
 Usage:
     uv run python scripts/run_eval.py
-    EVAL_LIMIT=5 uv run python scripts/run_eval.py   # quick smoke-test
-    JUDGE_MODEL=qwen3.5-122b-a10b uv run python scripts/run_eval.py
+    EVAL_LIMIT=5 uv run python scripts/run_eval.py          # quick smoke-test
+
+Graph LLM overrides (applied before civicsetu imports, so nodes.py picks them up):
+    EVAL_PRIMARY_MODEL=openrouter/qwen/qwen3.5-397b-a17b:free uv run python scripts/run_eval.py
+    EVAL_PRIMARY_MODEL=gemini/gemini-2.5-flash-lite          uv run python scripts/run_eval.py
+
+    EVAL_FALLBACK_MODEL is optional — defaults to EVAL_PRIMARY_MODEL if not set.
+
+Judge (RAGAS scorer) model:
+    JUDGE_MODEL=qwen3.5-397b-a17b uv run python scripts/run_eval.py
 """
 from __future__ import annotations
 
@@ -32,9 +40,13 @@ ROOT         = Path(__file__).parent.parent
 DATASET_PATH = ROOT / "eval" / "golden_dataset.jsonl"
 OUTPUT_PATH  = ROOT / "eval_results.json"
 
-PASS_THRESHOLD = float(os.getenv("PASS_THRESHOLD", "0.7"))
-EVAL_LIMIT     = int(os.getenv("EVAL_LIMIT", "0")) or None
-JUDGE_MODEL    = os.getenv("JUDGE_MODEL", "qwen3.5-122b-a10b")
+PASS_THRESHOLD      = float(os.getenv("PASS_THRESHOLD", "0.7"))
+EVAL_LIMIT          = int(os.getenv("EVAL_LIMIT", "0")) or None
+JUDGE_MODEL         = os.getenv("JUDGE_MODEL", "qwen3.5-122b-a10b")
+
+# Graph LLM overrides — applied before civicsetu is imported so nodes.py reads them
+EVAL_PRIMARY_MODEL  = os.getenv("EVAL_PRIMARY_MODEL")   # overrides PRIMARY_MODEL for graph
+EVAL_FALLBACK_MODEL = os.getenv("EVAL_FALLBACK_MODEL")  # overrides all fallbacks (defaults to primary)
 
 
 # ── Dataset ────────────────────────────────────────────────────────────────────
@@ -287,9 +299,25 @@ def main() -> None:
     if EVAL_LIMIT:
         rows = rows[:EVAL_LIMIT]
 
-    print(f"CivicSetu RAGAS Eval — {len(rows)} queries | model={JUDGE_MODEL} | threshold={PASS_THRESHOLD}")
+    print(f"CivicSetu RAGAS Eval — {len(rows)} queries | judge={JUDGE_MODEL} | threshold={PASS_THRESHOLD}")
 
     # ── Step 1: collect ────────────────────────────────────────────────────────
+    # Apply graph LLM overrides BEFORE importing civicsetu.
+    # nodes.py builds FALLBACK_MODELS at module import time from settings,
+    # so env vars must be set before the first import of civicsetu.agent.graph.
+    if EVAL_PRIMARY_MODEL:
+        fallback = EVAL_FALLBACK_MODEL or EVAL_PRIMARY_MODEL
+        os.environ["PRIMARY_MODEL"]    = EVAL_PRIMARY_MODEL
+        os.environ["FALLBACK_MODEL_1"] = fallback
+        os.environ["FALLBACK_MODEL_2"] = fallback
+        os.environ["FALLBACK_MODEL_3"] = fallback
+        print(f"  Graph LLM : {EVAL_PRIMARY_MODEL}  (all fallbacks → same)")
+    else:
+        from dotenv import load_dotenv
+        load_dotenv()
+        primary = os.getenv("PRIMARY_MODEL", "gemini/gemini-2.5-flash-lite")
+        print(f"  Graph LLM : {primary}  (from .env)")
+
     from civicsetu.agent.graph import get_compiled_graph
     graph = get_compiled_graph()
 
@@ -315,6 +343,7 @@ def main() -> None:
     report = {
         "run_at":          datetime.now(timezone.utc).isoformat(),
         "dataset_size":    len(scored),
+        "graph_model":     EVAL_PRIMARY_MODEL or os.getenv("PRIMARY_MODEL", "from-.env"),
         "judge_model":     JUDGE_MODEL,
         "pass_threshold":  PASS_THRESHOLD,
         "overall":         _group_stats(scored),
