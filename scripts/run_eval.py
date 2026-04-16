@@ -111,10 +111,17 @@ def build_judge(gemini_key: str):
     #     print(f"  Judge: OpenRouter / {JUDGE_MODEL}")
     # ───────────────────────────────────────────────────────────────────────
     """
-    from google import genai
     from openai import AsyncOpenAI
     from ragas.llms import llm_factory
-    from ragas.embeddings import GoogleEmbeddings
+    from ragas.embeddings import LangchainEmbeddingsWrapper
+    from langchain_ollama import OllamaEmbeddings
+
+    # ── Previously used (google-genai embeddings) ───────────────────────────
+    # from google import genai
+    # from ragas.embeddings import GoogleEmbeddings
+    # genai_client = genai.Client(api_key=gemini_key)
+    # judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
+    # ───────────────────────────────────────────────────────────────────────
 
     osmapi_key = os.getenv("OSMAPI_API_KEY")
     if not osmapi_key:
@@ -136,32 +143,26 @@ def build_judge(gemini_key: str):
     # default of 1024 causes IncompleteOutputException on complex legal answers.
     judge_llm = llm_factory(JUDGE_MODEL, client=llm_client, max_tokens=8192)
 
-    # Embeddings: google-genai (AnswerRelevancy needs semantic similarity;
-    # osmapi has no embedding endpoint).
-    genai_client = genai.Client(api_key=gemini_key)
-    judge_embeddings = GoogleEmbeddings(client=genai_client, model="gemini-embedding-001")
+    # Embeddings: Ollama (nomic-embed-text) — same model as the main RAG app.
+    # Requires Ollama running locally at OLLAMA_BASE_URL.
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    judge_embeddings = LangchainEmbeddingsWrapper(
+        OllamaEmbeddings(model="nomic-embed-text", base_url=ollama_base_url)
+    )
+    print(f"  Embeddings: Ollama / nomic-embed-text @ {ollama_base_url}")
 
     return judge_llm, judge_embeddings
 
 
 def build_judge_pool() -> list[tuple]:
     """
-    Build a single judge (llm, embeddings) pair using GEMINI_API_KEY_2.
-    Always single-worker sequential mode to avoid auth conflicts.
+    Build a single judge (llm, embeddings) pair.
+    LLM: osmapi. Embeddings: Ollama. No Gemini key needed.
     """
     from dotenv import load_dotenv
     load_dotenv()
 
-    key1 = os.getenv("GEMINI_API_KEY_2")
-    if not key1:
-        print(
-            "ERROR: GEMINI_API_KEY_2 is not set (required for embeddings).\n"
-            "Add it to your .env: GEMINI_API_KEY_2=<your-gemini-key>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    return [build_judge(key1)]
+    return [build_judge(gemini_key="")]
 
 
 def score_batch_in_thread(batch: list[dict], judge_llm, judge_embeddings, label: str = "") -> list[dict]:
@@ -293,10 +294,10 @@ def score_batch(batch: list[dict], judge_llm, judge_embeddings, label: str = "")
         ar_metric = AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings)
         cp_metric = ContextPrecision(llm=judge_llm)
 
-        # Sleep BATCH_DELAY_SEC between each metric so the per-minute quota resets.
-        # abatch_score fires all rows concurrently (asyncio.gather), so even with
-        # BATCH_SIZE=1 we get ~2-5 calls per metric. Sleeping 60 s between metrics
-        # keeps us well under Gemini free tier's 15 RPM cap.
+        # Note: inter-metric sleeps removed — osmapi has no 15 RPM cap.
+        # Re-enable if switching back to Gemini free tier:
+        #   _sleep_log(BATCH_DELAY_SEC, label)  # between faithfulness → answer_relevancy
+        #   _sleep_log(BATCH_DELAY_SEC, label)  # between answer_relevancy → context_precision
         _log(f"faithfulness    → scoring {ids}", label)
         t0 = time.perf_counter()
         f_results  = f_metric.batch_score([
@@ -304,7 +305,6 @@ def score_batch(batch: list[dict], judge_llm, judge_embeddings, label: str = "")
             for r in scoreable
         ])
         _log(f"faithfulness    ✓ done ({time.perf_counter() - t0:.1f}s)", label)
-        _sleep_log(BATCH_DELAY_SEC, label)
 
         _log(f"answer_relevancy → scoring {ids}", label)
         t0 = time.perf_counter()
@@ -313,7 +313,6 @@ def score_batch(batch: list[dict], judge_llm, judge_embeddings, label: str = "")
             for r in scoreable
         ])
         _log(f"answer_relevancy ✓ done ({time.perf_counter() - t0:.1f}s)", label)
-        _sleep_log(BATCH_DELAY_SEC, label)
 
         _log(f"context_precision → scoring {ids}", label)
         t0 = time.perf_counter()
@@ -409,8 +408,8 @@ def run_phase2(invoked: list[dict]) -> list[dict]:
             scored = score_batch(batch, judge_llm, judge_embeddings, label=f"B{batch_num}")
             all_scored.extend(scored)
             _log(f"Batch {batch_num}/{len(batches)} complete")
-            if batch_num < len(batches):
-                _sleep_log(BATCH_DELAY_SEC)
+            # if batch_num < len(batches):
+            #     _sleep_log(BATCH_DELAY_SEC)  # re-enable for Gemini free tier
     else:
         # Two workers: interleave batches across keys (worker 0 = even, worker 1 = odd).
         # Each thread runs its own asyncio event loop to avoid cross-thread conflicts.
