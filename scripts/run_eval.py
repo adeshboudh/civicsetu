@@ -34,14 +34,14 @@ Judge provider (Phase 2):
 from __future__ import annotations
 
 import argparse
-import asyncio
+# import asyncio                                    # not needed — sequential mode
 import json
 import math
 import os
 import sys
 import time
 import io
-from concurrent.futures import ThreadPoolExecutor, as_completed
+# from concurrent.futures import ThreadPoolExecutor, as_completed  # not needed — sequential mode
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,9 +51,9 @@ if sys.stdout.encoding != "utf-8":
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-# ── Rate-limit constants (override via env vars) ───────────────────────────────
-BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "2"))   # 1 row/batch keeps burst ≤5 calls
-BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60"))
+# ── Constants ──────────────────────────────────────────────────────────────────
+# BATCH_SIZE      = int(os.getenv("BATCH_SIZE", "2"))      # commented out — sequential mode
+# BATCH_DELAY_SEC = int(os.getenv("BATCH_DELAY_SEC", "60")) # commented out — no rate-limit sleep
 PASS_THRESHOLD  = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT      = int(os.getenv("EVAL_LIMIT", "0")) or None   # 0 = no limit
 
@@ -164,16 +164,16 @@ def build_judge_pool() -> list[tuple]:
     return [build_judge(key1)]
 
 
-def score_batch_in_thread(batch: list[dict], judge_llm, judge_embeddings, label: str = "") -> list[dict]:
-    """Thread-safe wrapper: gives each worker thread its own asyncio event loop."""
-    ids = [r["id"] for r in batch]
-    _log(f"starting {ids}", label)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return score_batch(batch, judge_llm, judge_embeddings, label=label)
-    finally:
-        loop.close()
+# def score_batch_in_thread(batch, judge_llm, judge_embeddings, label=""):
+#     """Commented out — was used for parallel dual-worker mode."""
+#     ids = [r["id"] for r in batch]
+#     _log(f"starting {ids}", label)
+#     loop = asyncio.new_event_loop()
+#     asyncio.set_event_loop(loop)
+#     try:
+#         return score_batch(batch, judge_llm, judge_embeddings, label=label)
+#     finally:
+#         loop.close()
 
 
 # ── Dataset helpers ────────────────────────────────────────────────────────────
@@ -277,71 +277,44 @@ def _safe_metric(val, default: float = 0.0) -> float:
         return default
 
 
-def score_batch(batch: list[dict], judge_llm, judge_embeddings, label: str = "") -> list[dict]:
+def score_row(row: dict, judge_llm, judge_embeddings) -> dict:
+    """Score a single row with all three RAGAS metrics. Simple sequential API calls."""
     from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextPrecision
 
-    scoreable = [r for r in batch if r["answer"] and r["contexts"]]
-    skipped   = [r for r in batch if not (r["answer"] and r["contexts"])]
+    row = dict(row)
 
-    ids = [r["id"] for r in scoreable]
-    scored = []
-    if scoreable:
-        # Collections metrics use their own .batch_score() API, not ragas.evaluate().
-        # evaluate() only works with ragas.metrics.Metric subclasses; these inherit
-        # from ragas.metrics.collections.base.BaseMetric which is a different hierarchy.
-        f_metric  = Faithfulness(llm=judge_llm)
-        ar_metric = AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings)
-        cp_metric = ContextPrecision(llm=judge_llm)
-
-        # Sleep BATCH_DELAY_SEC between each metric so the per-minute quota resets.
-        # abatch_score fires all rows concurrently (asyncio.gather), so even with
-        # BATCH_SIZE=1 we get ~2-5 calls per metric. Sleeping 60 s between metrics
-        # keeps us well under Gemini free tier's 15 RPM cap.
-        _log(f"faithfulness    → scoring {ids}", label)
-        t0 = time.perf_counter()
-        f_results  = f_metric.batch_score([
-            {"user_input": r["query"], "response": r["answer"], "retrieved_contexts": r["contexts"]}
-            for r in scoreable
-        ])
-        _log(f"faithfulness    ✓ done ({time.perf_counter() - t0:.1f}s)", label)
-        # _sleep_log(BATCH_DELAY_SEC, label)  # rate-limit delay — disabled for osmapi
-
-        _log(f"answer_relevancy → scoring {ids}", label)
-        t0 = time.perf_counter()
-        ar_results = ar_metric.batch_score([
-            {"user_input": r["query"], "response": r["answer"]}
-            for r in scoreable
-        ])
-        _log(f"answer_relevancy ✓ done ({time.perf_counter() - t0:.1f}s)", label)
-        # _sleep_log(BATCH_DELAY_SEC, label)  # rate-limit delay — disabled for osmapi
-
-        _log(f"context_precision → scoring {ids}", label)
-        t0 = time.perf_counter()
-        cp_results = cp_metric.batch_score([
-            {"user_input": r["query"], "reference": r["ground_truth"], "retrieved_contexts": r["contexts"]}
-            for r in scoreable
-        ])
-        _log(f"context_precision ✓ done ({time.perf_counter() - t0:.1f}s)", label)
-
-        for row, f_r, ar_r, cp_r in zip(scoreable, f_results, ar_results, cp_results):
-            row = dict(row)
-            row["faithfulness"]      = round(_safe_metric(f_r.value), 3)
-            row["answer_relevancy"]  = round(_safe_metric(ar_r.value), 3)
-            row["context_precision"] = round(_safe_metric(cp_r.value), 3)
-            row["pass"] = (
-                row["faithfulness"]      >= PASS_THRESHOLD
-                and row["answer_relevancy"]  >= PASS_THRESHOLD
-                and row["context_precision"] >= PASS_THRESHOLD
-            )
-            scored.append(row)
-
-    for row in skipped:
-        row = dict(row)
+    if not row["answer"] or not row["contexts"]:
         row["faithfulness"] = row["answer_relevancy"] = row["context_precision"] = 0.0
         row["pass"] = False
-        scored.append(row)
+        return row
 
-    return scored
+    f_metric  = Faithfulness(llm=judge_llm)
+    ar_metric = AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings)
+    cp_metric = ContextPrecision(llm=judge_llm)
+
+    f_results  = f_metric.batch_score([
+        {"user_input": row["query"], "response": row["answer"], "retrieved_contexts": row["contexts"]}
+    ])
+    ar_results = ar_metric.batch_score([
+        {"user_input": row["query"], "response": row["answer"]}
+    ])
+    cp_results = cp_metric.batch_score([
+        {"user_input": row["query"], "reference": row["ground_truth"], "retrieved_contexts": row["contexts"]}
+    ])
+
+    row["faithfulness"]      = round(_safe_metric(f_results[0].value), 3)
+    row["answer_relevancy"]  = round(_safe_metric(ar_results[0].value), 3)
+    row["context_precision"] = round(_safe_metric(cp_results[0].value), 3)
+    row["pass"] = (
+        row["faithfulness"]      >= PASS_THRESHOLD
+        and row["answer_relevancy"]  >= PASS_THRESHOLD
+        and row["context_precision"] >= PASS_THRESHOLD
+    )
+    return row
+
+# def score_batch(batch, judge_llm, judge_embeddings, label=""):
+#     """Commented out — was the batched+sleep scoring path for Gemini free-tier rate limits."""
+#     ... (see git history)
 
 
 def compute_group_stats(rows: list[dict], key: str) -> dict:
@@ -394,60 +367,41 @@ def print_summary(all_rows: list[dict]) -> None:
 
 
 def run_phase2(invoked: list[dict]) -> list[dict]:
-    print(f"\nPhase 2: RAGAS scoring {len(invoked)} rows in batches of {BATCH_SIZE}...")
-    judges = build_judge_pool()
-    num_workers = len(judges)
+    print(f"\nPhase 2: RAGAS scoring {len(invoked)} rows (sequential)...")
+    judge_llm, judge_embeddings = build_judge_pool()[0]
     all_scored: list[dict] = []
 
-    batches = [invoked[i:i + BATCH_SIZE] for i in range(0, len(invoked), BATCH_SIZE)]
+    for i, row in enumerate(invoked, 1):
+        _log(f"[{i:02}/{len(invoked)}] {row['id']}")
+        try:
+            scored = score_row(row, judge_llm, judge_embeddings)
+        except Exception as exc:
+            _log(f"  FAILED ({type(exc).__name__}: {exc}) — skipping with zeros")
+            scored = dict(row)
+            scored["faithfulness"] = scored["answer_relevancy"] = scored["context_precision"] = 0.0
+            scored["pass"] = False
+        all_scored.append(scored)
+        _log(f"  faith={scored['faithfulness']:.2f}  rel={scored['answer_relevancy']:.2f}  prec={scored['context_precision']:.2f}  {'PASS' if scored['pass'] else 'fail'}")
 
-    if num_workers == 1:
-        judge_llm, judge_embeddings = judges[0]
-        for batch_num, batch in enumerate(batches, 1):
-            ids = [r["id"] for r in batch]
-            _log(f"Batch {batch_num}/{len(batches)}: {ids}")
-            scored = score_batch(batch, judge_llm, judge_embeddings, label=f"B{batch_num}")
-            all_scored.extend(scored)
-            _log(f"Batch {batch_num}/{len(batches)} complete")
-            if batch_num < len(batches):
-                _sleep_log(BATCH_DELAY_SEC)
-    else:
-        # Two workers: interleave batches across keys (worker 0 = even, worker 1 = odd).
-        # Each thread runs its own asyncio event loop to avoid cross-thread conflicts.
-        futures: dict = {}
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            for i, batch in enumerate(batches):
-                judge_llm, judge_emb = judges[i % 2]
-                ids = [r["id"] for r in batch]
-                worker_label = f"W{i % 2 + 1}-B{i + 1}"
-                _log(f"Submitting batch {i + 1}/{len(batches)}: {ids} → worker {i % 2 + 1}")
-                f = executor.submit(score_batch_in_thread, batch, judge_llm, judge_emb, worker_label)
-                futures[f] = i
-
-            results: dict[int, list[dict]] = {}
-            for f in as_completed(futures):
-                idx = futures[f]
-                try:
-                    results[idx] = f.result(timeout=300)  # 5-min cap per batch
-                except Exception as exc:
-                    _log(f"Batch {idx + 1} FAILED ({type(exc).__name__}: {exc}) — skipping with zeros")
-                    results[idx] = []
-                else:
-                    _log(f"Batch {idx + 1} complete")
-
-        for i in sorted(results):
-            all_scored.extend(results[i])
+    # ── Commented out: batched + parallel + rate-limit-sleep mode ──────────────
+    # batches = [invoked[i:i + BATCH_SIZE] for i in range(0, len(invoked), BATCH_SIZE)]
+    # if num_workers == 1:
+    #     for batch_num, batch in enumerate(batches, 1):
+    #         scored = score_batch(batch, judge_llm, judge_embeddings, label=f"B{batch_num}")
+    #         all_scored.extend(scored)
+    #         _sleep_log(BATCH_DELAY_SEC)
+    # else:  # ThreadPoolExecutor dual-worker path — see git history
+    # ───────────────────────────────────────────────────────────────────────────
 
     print_summary(all_scored)
 
     jurisdictions = sorted({r["jurisdiction"] or "MULTI" for r in all_scored})
     query_types   = sorted({r["query_type"] for r in all_scored})
     report = {
-        "run_at":          datetime.now(timezone.utc).isoformat(),
-        "dataset_size":    len(all_scored),
-        "batch_size":      BATCH_SIZE,
-        "batch_delay_sec": BATCH_DELAY_SEC,
-        "pass_threshold":  PASS_THRESHOLD,
+        "run_at":        datetime.now(timezone.utc).isoformat(),
+        "dataset_size":  len(all_scored),
+        "mode":          "sequential",
+        "pass_threshold": PASS_THRESHOLD,
         "overall":         compute_group_stats(all_scored, "overall"),
         "by_jurisdiction": {
             jur: compute_group_stats([r for r in all_scored if (r["jurisdiction"] or "MULTI") == jur], jur)
@@ -482,8 +436,7 @@ def main() -> None:
     if EVAL_LIMIT:
         rows = rows[:EVAL_LIMIT]
 
-    print(f"CivicSetu RAGAS Eval — {len(rows)} queries  |  "
-          f"batch_size={BATCH_SIZE}  delay={BATCH_DELAY_SEC}s  threshold={PASS_THRESHOLD}")
+    print(f"CivicSetu RAGAS Eval — {len(rows)} queries  |  sequential  threshold={PASS_THRESHOLD}")
 
     if args.phase == 1:
         run_phase1(rows)
