@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 
 import litellm
@@ -81,14 +82,22 @@ def _llm_call(prompt: str, system: str, temperature: float = 0.0) -> str:
         try:
             # Gemini 3.x models degrade below temperature=1.0
             effective_temp = 1.0 if "gemini-3" in model else temperature
+            extra_body = {}
+            if "osmapi.com" in os.environ.get("OPENAI_API_BASE", ""):
+                extra_body["no_reasoning"] = True
             response = litellm.completion(
                 model=model,
                 messages=messages,
                 temperature=effective_temp,
                 max_tokens=1024,
+                **({"extra_body": extra_body} if extra_body else {}),
             )
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
-            content = response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            if content is None:
+                # Qwen3 thinking models return output in reasoning_content, not content
+                content = getattr(response.choices[0].message, "reasoning_content", None) or ""
+            content = content.strip()
             usage = getattr(response, "usage", None)
             log.info(
                 "llm_call_complete",
