@@ -218,15 +218,12 @@ def run_phase1(rows: list[dict], graph) -> list[dict]:
     else:
         done = {}
 
-    results: list[dict] = [done[row["id"]] for row in rows if row["id"] in done]
-
     for i, row in enumerate(rows, 1):
         if row["id"] in done:
             print(f"  [{i:02}/{n}] {row['id']} — cached")
             continue
 
         result = invoke_graph(graph, row)
-        results.append(result)
         done[row["id"]] = result
 
         status = "OK" if result["answer"] else "EMPTY"
@@ -410,8 +407,6 @@ def main() -> None:
         os.environ["FALLBACK_MODEL_3"] = litellm_model
         print(f"  Graph LLM : osmapi / {EVAL_PRIMARY_MODEL}")
     else:
-        from dotenv import load_dotenv
-        load_dotenv()
         primary = os.getenv("PRIMARY_MODEL", "gemini/gemini-2.5-flash-lite")
         print(f"  Graph LLM : {primary}  (from .env)")
 
