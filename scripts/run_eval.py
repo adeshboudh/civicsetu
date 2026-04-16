@@ -10,11 +10,12 @@ Usage:
     uv run python scripts/run_eval.py
     EVAL_LIMIT=5 uv run python scripts/run_eval.py          # quick smoke-test
 
-Graph LLM overrides (applied before civicsetu imports, so nodes.py picks them up):
-    EVAL_PRIMARY_MODEL=openrouter/qwen/qwen3.5-397b-a17b:free uv run python scripts/run_eval.py
-    EVAL_PRIMARY_MODEL=gemini/gemini-2.5-flash-lite          uv run python scripts/run_eval.py
+Graph LLM override — routes graph through osmapi before civicsetu is imported:
+    EVAL_PRIMARY_MODEL=qwen3.5-122b-a10b uv run python scripts/run_eval.py
+    EVAL_PRIMARY_MODEL=qwen3.5-397b-a17b uv run python scripts/run_eval.py
 
-    EVAL_FALLBACK_MODEL is optional — defaults to EVAL_PRIMARY_MODEL if not set.
+    When set, the script configures LiteLLM to use osmapi (OSMAPI_API_KEY + base URL)
+    as the openai-compatible provider for all graph calls. No fallbacks — single model.
 
 Judge (RAGAS scorer) model:
     JUDGE_MODEL=qwen3.5-397b-a17b uv run python scripts/run_eval.py
@@ -44,9 +45,9 @@ PASS_THRESHOLD      = float(os.getenv("PASS_THRESHOLD", "0.7"))
 EVAL_LIMIT          = int(os.getenv("EVAL_LIMIT", "0")) or None
 JUDGE_MODEL         = os.getenv("JUDGE_MODEL", "qwen3.5-122b-a10b")
 
-# Graph LLM overrides — applied before civicsetu is imported so nodes.py reads them
-EVAL_PRIMARY_MODEL  = os.getenv("EVAL_PRIMARY_MODEL")   # overrides PRIMARY_MODEL for graph
-EVAL_FALLBACK_MODEL = os.getenv("EVAL_FALLBACK_MODEL")  # overrides all fallbacks (defaults to primary)
+# Graph LLM override — osmapi model name only (e.g. "qwen3.5-122b-a10b")
+# When set, all graph calls route through osmapi via LiteLLM's openai-compat provider.
+EVAL_PRIMARY_MODEL = os.getenv("EVAL_PRIMARY_MODEL")
 
 
 # ── Dataset ────────────────────────────────────────────────────────────────────
@@ -306,12 +307,21 @@ def main() -> None:
     # nodes.py builds FALLBACK_MODELS at module import time from settings,
     # so env vars must be set before the first import of civicsetu.agent.graph.
     if EVAL_PRIMARY_MODEL:
-        fallback = EVAL_FALLBACK_MODEL or EVAL_PRIMARY_MODEL
-        os.environ["PRIMARY_MODEL"]    = EVAL_PRIMARY_MODEL
-        os.environ["FALLBACK_MODEL_1"] = fallback
-        os.environ["FALLBACK_MODEL_2"] = fallback
-        os.environ["FALLBACK_MODEL_3"] = fallback
-        print(f"  Graph LLM : {EVAL_PRIMARY_MODEL}  (all fallbacks → same)")
+        # Route graph through osmapi via LiteLLM's openai-compatible provider.
+        # Must be set before civicsetu.agent.graph is imported — nodes.py builds
+        # FALLBACK_MODELS at module level from settings.
+        osmapi_key = os.getenv("OSMAPI_API_KEY")
+        if not osmapi_key:
+            print("ERROR: OSMAPI_API_KEY not set in .env", file=sys.stderr)
+            sys.exit(1)
+        litellm_model = f"openai/{EVAL_PRIMARY_MODEL}"
+        os.environ["OPENAI_API_KEY"]   = osmapi_key
+        os.environ["OPENAI_API_BASE"]  = "https://api.osmapi.com/v1"
+        os.environ["PRIMARY_MODEL"]    = litellm_model
+        os.environ["FALLBACK_MODEL_1"] = litellm_model
+        os.environ["FALLBACK_MODEL_2"] = litellm_model
+        os.environ["FALLBACK_MODEL_3"] = litellm_model
+        print(f"  Graph LLM : osmapi / {EVAL_PRIMARY_MODEL}")
     else:
         from dotenv import load_dotenv
         load_dotenv()
