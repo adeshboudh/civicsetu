@@ -22,7 +22,7 @@ from civicsetu.ingestion.graph_seeder import GraphSeeder
 log = structlog.get_logger(__name__)
 
 
-async def ingest_all(jurisdiction_filter: str | None = None, dry_run: bool = False):
+def ingest_all(jurisdiction_filter: str | None = None, dry_run: bool = False):
     docs = list(DOCUMENT_REGISTRY.values())
     if jurisdiction_filter:
         docs = [d for d in docs if d.jurisdiction.value == jurisdiction_filter.upper()]
@@ -66,8 +66,7 @@ async def ingest_all(jurisdiction_filter: str | None = None, dry_run: bool = Fal
 
     log.info("seeding_graph_edges")
     try:
-        seeder = GraphSeeder()
-        await seeder.seed_all()
+        asyncio.run(GraphSeeder.seed_from_postgres())
         log.info("graph_seeding_complete")
     except Exception as e:
         log.error("graph_seeding_failed", error=str(e))
@@ -91,7 +90,7 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="List docs without ingesting")
     args = parser.parse_args()
 
-    asyncio.run(ingest_all(
+    ingest_all(
         jurisdiction_filter=args.jurisdiction,
         dry_run=args.dry_run,
-    ))
+    )
