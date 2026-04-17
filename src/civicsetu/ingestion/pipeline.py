@@ -80,7 +80,10 @@ class IngestionPipeline:
         raw_chunks = MetadataExtractor.enrich_chunks(raw_chunks, filename=local_path.name)
 
         # Step 5 — Embed
-        texts = [c["text"] for c in raw_chunks]
+        texts = [
+            f"{c['section_title']}\n{c['text']}" if c.get("section_title") else c["text"]
+            for c in raw_chunks
+        ]
         embeddings = self.embedder.embed_batch_documents(texts)
         for chunk_dict, embedding in zip(raw_chunks, embeddings):
             chunk_dict["embedding"] = embedding
