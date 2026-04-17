@@ -141,10 +141,10 @@ def build_judge():
     )
 
     if _is_gemini_model(JUDGE_MODEL):
-        # LiteLLM uses GEMINI_API_KEY env var for gemini/ models
-        os.environ["GEMINI_API_KEY"] = gemini_key
+        from litellm import OpenAI as LiteLLMClient
         model = JUDGE_MODEL if "/" in JUDGE_MODEL else f"gemini/{JUDGE_MODEL}"
-        judge_llm = llm_factory(model, max_tokens=8192)
+        llm_client = LiteLLMClient(api_key=gemini_key, model=model)
+        judge_llm = llm_factory(model, client=llm_client, max_tokens=8192)
         print(f"  Judge LLM  : Gemini / {model}")
         print(f"  Embeddings : Google gemini-embedding-001")
     else:
