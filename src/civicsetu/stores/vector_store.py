@@ -171,6 +171,101 @@ class VectorStore:
         ]
 
     @staticmethod
+    async def full_text_search(
+        session: AsyncSession,
+        query: str,
+        top_k: int = 10,
+        jurisdiction: Jurisdiction | None = None,
+        active_only: bool = True,
+    ) -> list[RetrievedChunk]:
+        """
+        BM25-style full-text search using PostgreSQL tsvector/ts_rank.
+        Searches text + section_title + section_id for exact keyword matches.
+        Complements vector search to catch entity-type distinctions
+        (e.g. 'promoter' vs 'real estate agent', 'Section 59' vs 'Section 62').
+        """
+        import re
+
+        # Extract significant words (4+ chars); join with OR for broad recall.
+        # plainto_tsquery ANDs all terms — long questions require ALL words in one
+        # chunk, yielding 0 results. OR via websearch_to_tsquery gives high recall
+        # while still ranking by ts_rank.
+        _STOP = {'what', 'does', 'have', 'that', 'this', 'with', 'from', 'your',
+                 'they', 'when', 'under', 'their', 'there', 'about', 'which',
+                 'would', 'should', 'could', 'been', 'were', 'will', 'shall',
+                 'between', 'after', 'before', 'without'}
+        words = [w for w in re.findall(r'\b[a-zA-Z]{4,}\b', query.lower())
+                 if w not in _STOP][:8]
+        if not words:
+            return []
+        or_query = " OR ".join(words)
+
+        filters = []
+        params: dict = {"top_k": top_k, "query": or_query}
+
+        if active_only:
+            filters.append("status = 'active'")
+        if jurisdiction:
+            filters.append("jurisdiction = :jurisdiction")
+            params["jurisdiction"] = jurisdiction.value
+
+        where_clause = f"WHERE {' AND '.join(filters)} AND" if filters else "WHERE"
+
+        stmt = text(f"""
+            SELECT
+                chunk_id, doc_id, jurisdiction, doc_type, doc_name,
+                section_id, section_title, section_hierarchy,
+                text, effective_date, superseded_by, status,
+                source_url, page_number,
+                ts_rank(
+                    to_tsvector('english', COALESCE(section_title, '') || ' ' || text),
+                    websearch_to_tsquery('english', :query)
+                ) AS fts_score
+            FROM legal_chunks
+            {where_clause}
+                to_tsvector('english', COALESCE(section_title, '') || ' ' || text)
+                @@ websearch_to_tsquery('english', :query)
+            ORDER BY fts_score DESC
+            LIMIT :top_k
+        """)
+
+        result = await session.execute(stmt, params)
+        rows = result.fetchall()
+
+        retrieved = []
+        for row in rows:
+            chunk = LegalChunk(
+                chunk_id=row.chunk_id,
+                doc_id=row.doc_id,
+                jurisdiction=row.jurisdiction,
+                doc_type=row.doc_type,
+                doc_name=row.doc_name,
+                section_id=row.section_id,
+                section_title=row.section_title,
+                section_hierarchy=list(row.section_hierarchy),
+                text=row.text,
+                effective_date=row.effective_date,
+                superseded_by=row.superseded_by,
+                status=row.status,
+                source_url=row.source_url,
+                page_number=row.page_number,
+                embedding=None,
+            )
+            retrieved.append(RetrievedChunk(
+                chunk=chunk,
+                vector_score=round(float(row.fts_score), 4),
+                retrieval_source="keyword",
+            ))
+
+        log.info(
+            "full_text_search_complete",
+            top_k=top_k,
+            results=len(retrieved),
+            jurisdiction=jurisdiction,
+        )
+        return retrieved
+
+    @staticmethod
     async def delete_by_doc_id(session: AsyncSession, doc_id: UUID) -> int:
         """Hard delete all chunks for a document. Used during re-ingestion."""
         result = await session.execute(
