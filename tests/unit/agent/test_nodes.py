@@ -15,8 +15,8 @@ def test_reranker_settings_defaults():
     from civicsetu.config.settings import Settings
     s = Settings()
     assert s.reranker_model == "rank-T5-flan"
-    assert s.reranker_score_threshold == 0.3
-    assert s.reranker_score_gap == 0.35
+    assert s.reranker_score_threshold == 0.1
+    assert s.reranker_score_gap == 0.6
 
 
 def test_reranker_settings_env_override(monkeypatch):
@@ -193,6 +193,91 @@ def test_generator_handles_malformed_llm_json():
     assert result["citations"] == []
 
 
+def test_generator_salvages_plain_text_when_json_missing():
+    from civicsetu.agent.nodes import generator_node
+
+    chunks = [_make_rc(section_id="18"), _make_rc(section_id="31")]
+    raw = "Promoter must register project, disclose details, and honor timelines."
+
+    with patch("civicsetu.agent.nodes._llm_call", return_value=raw):
+        result = generator_node(_base_state(reranked_chunks=chunks))
+
+    assert result["raw_response"] == raw
+    assert result["confidence_score"] == 0.3
+    assert len(result["citations"]) == 2
+
+
+def test_classifier_extracts_json_from_reasoning_wrapper():
+    from civicsetu.agent.nodes import classifier_node
+    from civicsetu.models.enums import QueryType
+
+    wrapped = """
+Thinking:
+- classify legal query
+
+```json
+{"query_type":"cross_reference","rewritten_query":"Section 18 refund obligations under RERA Act"}
+```
+"""
+
+    with patch("civicsetu.agent.nodes._llm_call", return_value=wrapped):
+        result = classifier_node(_base_state(query="What does Section 18 say?"))
+
+    assert result["query_type"] == QueryType.CROSS_REFERENCE
+    assert result["rewritten_query"] == "Section 18 refund obligations under RERA Act"
+
+
+def test_generator_extracts_json_from_reasoning_wrapper():
+    from civicsetu.agent.nodes import generator_node
+
+    chunks = [_make_rc(section_id="18")]
+    wrapped = """
+Here is structured answer.
+
+```json
+{"answer":"Refund due under Section 18.","confidence_score":0.8,"cited_chunks":[1],"amendment_notice":null,"conflict_warnings":[]}
+```
+"""
+
+    with patch("civicsetu.agent.nodes._llm_call", return_value=wrapped):
+        result = generator_node(_base_state(reranked_chunks=chunks))
+
+    assert result["raw_response"] == "Refund due under Section 18."
+    assert result["confidence_score"] == 0.8
+    assert len(result["citations"]) == 1
+
+
+def test_llm_call_uses_json_mode_for_osmapi(monkeypatch):
+    import civicsetu.agent.nodes as nodes_mod
+
+    monkeypatch.setenv("OPENAI_API_BASE", "https://api.osmapi.com/v1")
+
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+    fake_response.usage = None
+
+    with patch("civicsetu.agent.nodes.litellm.completion", return_value=fake_response) as completion:
+        result = nodes_mod._llm_call("prompt", "system")
+
+    assert result == '{"ok": true}'
+    assert completion.call_args.kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_llm_call_does_not_force_no_reasoning_for_osmapi(monkeypatch):
+    import civicsetu.agent.nodes as nodes_mod
+
+    monkeypatch.setenv("OPENAI_API_BASE", "https://api.osmapi.com/v1")
+
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+    fake_response.usage = None
+
+    with patch("civicsetu.agent.nodes.litellm.completion", return_value=fake_response) as completion:
+        nodes_mod._llm_call("prompt", "system")
+
+    assert "extra_body" not in completion.call_args.kwargs
+
+
 def test_generator_deduplicates_citations():
     from civicsetu.agent.nodes import generator_node
 
@@ -331,6 +416,42 @@ def test_score_gap_gap_at_first_pair():
     result = _apply_score_gap(chunks, gap=0.35)
     assert len(result) == 1
     assert result[0].rerank_score == 0.90
+
+
+def test_score_gap_old_threshold_cuts_aggressively():
+    """Old gap=0.35 cuts after position 1 when second chunk drops by 0.36."""
+    from civicsetu.agent.nodes import _apply_score_gap
+    chunks = [
+        _make_rc(rerank_score=0.88),
+        _make_rc(rerank_score=0.52),  # gap = 0.36 >= 0.35 → cut
+        _make_rc(rerank_score=0.40),
+    ]
+    result = _apply_score_gap(chunks, gap=0.35)
+    assert len(result) == 1
+
+
+def test_score_gap_new_threshold_keeps_more():
+    """New gap=0.6 keeps chunks unless there's a 0.6+ cliff."""
+    from civicsetu.agent.nodes import _apply_score_gap
+    chunks = [
+        _make_rc(rerank_score=0.88),
+        _make_rc(rerank_score=0.52),  # gap = 0.36 < 0.6 → keep
+        _make_rc(rerank_score=0.40),  # gap = 0.12 < 0.6 → keep
+    ]
+    result = _apply_score_gap(chunks, gap=0.6)
+    assert len(result) == 3
+
+
+def test_score_gap_new_threshold_still_cuts_on_cliff():
+    """New gap=0.6 still cuts when there's a genuine cliff."""
+    from civicsetu.agent.nodes import _apply_score_gap
+    chunks = [
+        _make_rc(rerank_score=0.88),
+        _make_rc(rerank_score=0.20),  # gap = 0.68 >= 0.6 → cut
+    ]
+    result = _apply_score_gap(chunks, gap=0.6)
+    assert len(result) == 1
+    assert result[0].rerank_score == 0.88
 
 
 # ── reranker_node threshold + gap filtering ───────────────────────────────────

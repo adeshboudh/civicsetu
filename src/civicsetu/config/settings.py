@@ -45,8 +45,8 @@ class Settings(BaseSettings):
 
     # Reranker
     reranker_model: str = Field(default="rank-T5-flan", alias="RERANKER_MODEL")
-    reranker_score_threshold: float = Field(default=0.3, alias="RERANKER_SCORE_THRESHOLD")
-    reranker_score_gap: float = Field(default=0.35, alias="RERANKER_SCORE_GAP")
+    reranker_score_threshold: float = Field(default=0.1, alias="RERANKER_SCORE_THRESHOLD")
+    reranker_score_gap: float = Field(default=0.6, alias="RERANKER_SCORE_GAP")
 
     # PostgreSQL
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
