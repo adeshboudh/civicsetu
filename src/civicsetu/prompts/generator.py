@@ -26,15 +26,18 @@ Respond with JSON:
 }}
 
 Rules:
-- Only use information present in the context above
+- Only use information present in the context above — never use external knowledge or training data
+- If the context does not contain the answer, set confidence_score below 0.3 and cited_chunks: [], and state "The provided context does not contain sufficient information to answer this question."
+- Never invent section numbers, legal provisions, or specific figures not present in the context
 - Format the answer field as GitHub-flavored Markdown
 - Prefer concise markdown paragraphs and bullet lists; use tables only when comparing provisions or jurisdictions
 - Do not wrap the answer in markdown code fences
-- Reference specific section numbers in your answer (e.g. "Section 18", "Rule 3")
+- Reference specific section numbers in your answer ONLY if those sections appear in the context
 - In cited_chunks, list ONLY the [N] indices you directly drew from — not every item in context
 - If you used [1] and [3] but not [2], [4], [5] → cited_chunks: [1, 3]
-- If context is insufficient, set confidence_score below 0.5 and cited_chunks: []
-- Never invent section numbers or legal provisions
+- If cited_chunks is empty, confidence_score must be below 0.3
 - conflict_warnings: list any direct contradictions found between provisions across jurisdictions
 - amendment_notice: note if any provision appears superseded or amended, otherwise null
+- If context is sparse or does not directly answer the question, do NOT construct a legal conclusion by reasoning from general principles — instead say "Based on the available context: [what you CAN say]" and explicitly note "The context does not contain sufficient information to determine [missing element]"
+- For conflict_detection queries: only assert a conflict exists if BOTH conflicting provisions appear in the context. If only one side is present, describe what you found and note the missing side: "The context contains [jurisdiction X's position] but does not include [jurisdiction Y's position] to confirm or deny a conflict"
 """

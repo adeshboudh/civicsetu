@@ -82,15 +82,16 @@ def _llm_call(prompt: str, system: str, temperature: float = 0.0) -> str:
         try:
             # Gemini 3.x models degrade below temperature=1.0
             effective_temp = 1.0 if "gemini-3" in model else temperature
-            extra_body = {}
+            completion_kwargs = {
+                "model": model,
+                "messages": messages,
+                "temperature": effective_temp,
+                "max_tokens": 1024,
+            }
             if "osmapi.com" in os.environ.get("OPENAI_API_BASE", ""):
-                extra_body["no_reasoning"] = True
+                completion_kwargs["response_format"] = {"type": "json_object"}
             response = litellm.completion(
-                model=model,
-                messages=messages,
-                temperature=effective_temp,
-                max_tokens=1024,
-                **({"extra_body": extra_body} if extra_body else {}),
+                **completion_kwargs,
             )
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
             content = response.choices[0].message.content
@@ -130,12 +131,47 @@ def _generator_tone_hint(query_type: QueryType | str | None) -> str:
         QueryType.PENALTY_LOOKUP: "Tone hint: Lead with the consequence, then explain why it applies.",
         QueryType.CROSS_REFERENCE: "Tone hint: Explain the connection between sections as a narrative.",
         QueryType.CONFLICT_DETECTION: (
-            "Tone hint: Explicitly flag the contradiction, explain both sides, "
-            "and state which jurisdiction takes precedence when the context supports it."
+            "Tone hint: Explicitly flag the contradiction ONLY if BOTH sides appear in the "
+            "provided context. If only one jurisdiction's rule is present, describe what you "
+            "found and note the missing side. Never infer precedence from legal reasoning — "
+            "only state precedence if the context explicitly says so."
         ),
         QueryType.TEMPORAL: "Tone hint: Explain what changed, when, and why it matters.",
     }
     return tone_hints.get(query_type, tone_hints[QueryType.FACT_LOOKUP])
+
+
+def _extract_json_dict(raw: str) -> dict:
+    """
+    Extract first valid JSON object from model output.
+    Tolerates code fences and extra reasoning/prose around the payload.
+    """
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.removeprefix("```json").removeprefix("```").strip()
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].strip()
+
+    decoder = json.JSONDecoder()
+
+    try:
+        parsed = decoder.decode(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    for idx, char in enumerate(cleaned):
+        if char != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(cleaned[idx:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+
+    raise json.JSONDecodeError("No JSON object found", cleaned, 0)
 
 
 # ── Node 1: Classifier ─────────────────────────────────────────────────────────
@@ -166,9 +202,7 @@ def classifier_node(state: CivicSetuState) -> dict:
 
     try:
         raw = _llm_call(prompt, system)
-        # Strip markdown code fences if present
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        result = json.loads(raw)
+        result = _extract_json_dict(raw)
 
         query_type_str = result.get("query_type", "fact_lookup")
         valid_types = QueryType._value2member_map_
@@ -185,19 +219,105 @@ def classifier_node(state: CivicSetuState) -> dict:
     return {"query_type": query_type, "rewritten_query": rewritten}
 
 
-# ── Node 2: Vector Retriever ───────────────────────────────────────────────────
+# ── Node 2: Vector Retriever (hybrid: vector + FTS via RRF) ───────────────────
 
-# ── Node 2: Vector Retriever ───────────────────────────────────────────────────
+_RRF_K = 60  # standard RRF constant — higher = smoother rank blending
+
+
+def _rrf_merge(
+    vector_results: list[RetrievedChunk],
+    fts_results: list[RetrievedChunk],
+    top_n: int,
+) -> list[RetrievedChunk]:
+    """
+    Reciprocal Rank Fusion of vector and full-text search results.
+    RRF score = 1/(k + rank_vector) + 1/(k + rank_fts).
+    Deduplicates by chunk_id; chunks appearing in both lists score highest.
+    """
+    rrf_scores: dict[str, float] = {}
+    chunk_map: dict[str, RetrievedChunk] = {}
+
+    for rank, rc in enumerate(vector_results, 1):
+        cid = str(rc.chunk.chunk_id)
+        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank)
+        chunk_map[cid] = rc
+
+    for rank, rc in enumerate(fts_results, 1):
+        cid = str(rc.chunk.chunk_id)
+        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank)
+        if cid not in chunk_map:
+            chunk_map[cid] = rc
+
+    ranked = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+    return [chunk_map[cid] for cid, _ in ranked[:top_n]]
+
+
+async def _rrf_retrieve(
+    query: str,
+    query_embedding: list[float],
+    top_k: int,
+    jurisdiction: str | None,
+) -> list[RetrievedChunk]:
+    """
+    Shared RRF hybrid retrieval: vector similarity + PostgreSQL FTS merged via
+    Reciprocal Rank Fusion, with top base-section family expansion.
+    Used by vector_retrieval_node, graph fallback, and hybrid fallback.
+    """
+    import re
+    async with AsyncSessionLocal() as session:
+        # Sequential — AsyncSession is not safe for concurrent coroutines
+        vector_results = await VectorStore.similarity_search(
+            session=session,
+            query_embedding=query_embedding,
+            top_k=top_k * 3,
+            jurisdiction=jurisdiction,
+            active_only=True,
+        )
+        fts_results = await VectorStore.full_text_search(
+            session=session,
+            query=query,
+            top_k=top_k * 2,
+            jurisdiction=jurisdiction,
+            active_only=True,
+        )
+
+        merged = _rrf_merge(vector_results, fts_results, top_n=top_k * 2)
+
+        seen_ids: set[str] = {str(r.chunk.chunk_id) for r in merged}
+        expanded: list[RetrievedChunk] = list(merged)
+
+        for rc in merged[:1]:
+            sid = rc.chunk.section_id
+            if not re.search(r'\(', str(sid)):  # base section only
+                jur = Jurisdiction(rc.chunk.jurisdiction)
+                family = await VectorStore.get_section_family(
+                    session=session, section_id=sid, jurisdiction=jur
+                )
+                for fc in family:
+                    cid = str(fc.chunk.chunk_id)
+                    if cid not in seen_ids:
+                        seen_ids.add(cid)
+                        expanded.append(fc)
+
+        _MAX_VECTOR_EXPANDED = 25
+        log.info(
+            "rrf_retrieve_complete",
+            vector_results=len(vector_results),
+            fts_results=len(fts_results),
+            merged=len(merged),
+            results=min(len(expanded), _MAX_VECTOR_EXPANDED),
+        )
+        return expanded[:_MAX_VECTOR_EXPANDED]
+
 
 def vector_retrieval_node(state: CivicSetuState) -> dict:
     """
-    Embeds the rewritten query and retrieves top_k chunks from pgvector.
-    After similarity search, expands any base section hit into its full
-    sub-chunk family (e.g. S11 → S11 + S11(3) ... S11(22)) so the reranker
-    can pick the most relevant sub-sections rather than only the first chunk.
+    Hybrid retrieval: vector similarity + PostgreSQL full-text search merged
+    via Reciprocal Rank Fusion (RRF). FTS catches entity-type distinctions
+    (promoter vs agent, Section 59 vs Section 62) that fool pure vector search.
+    After merging, expands the top base-section hit into its sub-chunk family.
     Returns: retrieved_chunks
     """
-    import re
     query = state.get("rewritten_query") or state["query"]
     top_k = state.get("top_k", 5)
     jurisdiction = state.get("jurisdiction_filter")
@@ -209,48 +329,8 @@ def vector_retrieval_node(state: CivicSetuState) -> dict:
     query_embedding = cached_embed(query)
     log.info("stage_timing", node="vector_retrieval", stage="embedding", duration_ms=round((time.perf_counter() - embed_start) * 1000, 2))
 
-    async def _retrieve():
-        async with AsyncSessionLocal() as session:
-            results = await VectorStore.similarity_search(
-                session=session,
-                query_embedding=query_embedding,
-                top_k=top_k,
-                jurisdiction=jurisdiction,
-                active_only=True,
-            )
-
-            # Expand base section hits into full sub-chunk families.
-            # S11 scores 0.735 but only contains subsection (1) — the
-            # remaining 17 sub-chunks score too low to surface individually.
-            # Fetching the family gives the reranker the full section content.
-            seen_ids: set[str] = {str(r.chunk.chunk_id) for r in results}
-            expanded: list[RetrievedChunk] = list(results)
-
-            for rc in results[:1]:
-                sid = rc.chunk.section_id
-                if not re.search(r'\(', str(sid)):  # base section only — skip sub-chunks
-                    jur = Jurisdiction(rc.chunk.jurisdiction)
-                    family = await VectorStore.get_section_family(
-                        session=session, section_id=sid, jurisdiction=jur
-                    )
-                    for fc in family:
-                        cid = str(fc.chunk.chunk_id)
-                        if cid not in seen_ids:
-                            seen_ids.add(cid)
-                            expanded.append(fc)
-
-            _MAX_VECTOR_EXPANDED = 25
-            expanded = expanded[:_MAX_VECTOR_EXPANDED]
-
-            log.info(
-                "vector_retrieval_complete",
-                base_results=len(results),
-                results=len(expanded),
-            )
-            return expanded
-
     retrieve_start = time.perf_counter()
-    chunks = asyncio.run(_retrieve())
+    chunks = asyncio.run(_rrf_retrieve(query, query_embedding, top_k, jurisdiction))
     log.info("stage_timing", node="vector_retrieval", stage="postgres_retrieval", duration_ms=round((time.perf_counter() - retrieve_start) * 1000, 2))
     log.info("node_timing", node="vector_retrieval", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), results=len(chunks))
     return {"retrieved_chunks": chunks}
@@ -285,27 +365,17 @@ def graph_retrieval_node(state: CivicSetuState) -> dict:
     log.info("stage_timing", node="graph_retrieval", stage="neo4j_postgres_hydration", duration_ms=round((time.perf_counter() - retrieve_start) * 1000, 2))
     
     # Fallback: if graph found nothing (no explicit section in query),
-    # run vector retrieval instead
+    # run RRF hybrid retrieval instead of pure vector
     if not chunks:
-        log.info("graph_retrieval_fallback_to_vector", query=query[:80])
+        log.info("graph_retrieval_fallback_to_rrf", query=query[:80])
         embed_start = time.perf_counter()
         query_embedding = cached_embed(query)
         log.info("stage_timing", node="graph_retrieval", stage="fallback_embedding", duration_ms=round((time.perf_counter() - embed_start) * 1000, 2))
 
-        async def _vector_fallback():
-            async with AsyncSessionLocal() as session:
-                return await VectorStore.similarity_search(
-                    session=session,
-                    query_embedding=query_embedding,
-                    top_k=top_k,
-                    jurisdiction=jurisdiction,
-                    active_only=True,
-                )
-
         fallback_start = time.perf_counter()
-        chunks = asyncio.run(_vector_fallback())
-        log.info("stage_timing", node="graph_retrieval", stage="fallback_vector_search", duration_ms=round((time.perf_counter() - fallback_start) * 1000, 2))
-        log.info("graph_fallback_complete", results=len(chunks))
+        chunks = asyncio.run(_rrf_retrieve(query, query_embedding, top_k, jurisdiction))
+        log.info("stage_timing", node="graph_retrieval", stage="fallback_rrf_search", duration_ms=round((time.perf_counter() - fallback_start) * 1000, 2))
+        log.info("graph_fallback_rrf_results", count=len(chunks))
 
     _MAX_GRAPH_CHUNKS = 25
     if len(chunks) > _MAX_GRAPH_CHUNKS:
@@ -501,12 +571,12 @@ def generator_node(state: CivicSetuState) -> dict:
         history_messages=len(recent_messages),
     )
 
+    raw = ""
     try:
         llm_start = time.perf_counter()
         raw = _llm_call(prompt, system, temperature=0.0)
         log.info("stage_timing", node="generator", stage="llm", duration_ms=round((time.perf_counter() - llm_start) * 1000, 2))
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        result = json.loads(raw)
+        result = _extract_json_dict(raw)
 
         answer = result.get("answer", "")
         confidence = float(result.get("confidence_score", 0.5))
@@ -564,9 +634,30 @@ def generator_node(state: CivicSetuState) -> dict:
 
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         log.warning("generator_parse_failed", error=str(e))
-        answer = "Unable to generate a structured response. Please try again."
-        confidence = 0.0
-        citations = []
+        salvage_answer = raw.strip()
+        if salvage_answer and "{" not in salvage_answer:
+            seen: set[tuple[str, str]] = set()
+            citations = []
+            for rc in chunks:
+                c = rc.chunk
+                key = (c.section_id, c.doc_name)
+                if key not in seen:
+                    seen.add(key)
+                    citations.append(Citation(
+                        section_id=c.section_id,
+                        doc_name=c.doc_name,
+                        jurisdiction=c.jurisdiction,
+                        effective_date=c.effective_date,
+                        source_url=c.source_url,
+                        chunk_id=c.chunk_id,
+                    ))
+            answer = salvage_answer
+            confidence = 0.3
+            log.warning("generator_parse_salvaged", citations=len(citations), answer_chars=len(answer))
+        else:
+            answer = "Unable to generate a structured response. Please try again."
+            confidence = 0.0
+            citations = []
         conflict_warnings = []
         amendment_notice = None
 
@@ -622,22 +713,16 @@ def hybrid_retrieval_node(state: CivicSetuState) -> dict:
     log.info("stage_timing", node="hybrid_retrieval", stage="embedding", duration_ms=round((time.perf_counter() - embed_start) * 1000, 2))
 
     async def _retrieve():
-        async with AsyncSessionLocal() as session:
-            vector_task = VectorStore.similarity_search(
-                session=session,
-                query_embedding=query_embedding,
-                top_k=top_k,
-                jurisdiction=jurisdiction,
-                active_only=True,
-            )
-            graph_task = GraphRetriever.retrieve(
-                query=query,
-                jurisdiction=jurisdiction,
-                depth=2,
-            )
-            vector_chunks, graph_chunks = await asyncio.gather(
-                vector_task, graph_task, return_exceptions=True
-            )
+        # _rrf_retrieve opens its own session; graph uses Neo4j — safe to gather
+        vector_task = _rrf_retrieve(query, query_embedding, top_k, jurisdiction)
+        graph_task = GraphRetriever.retrieve(
+            query=query,
+            jurisdiction=jurisdiction,
+            depth=2,
+        )
+        vector_chunks, graph_chunks = await asyncio.gather(
+            vector_task, graph_task, return_exceptions=True
+        )
 
         v_chunks = vector_chunks if not isinstance(vector_chunks, Exception) else []
         g_chunks = graph_chunks if not isinstance(graph_chunks, Exception) else []
