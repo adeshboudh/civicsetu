@@ -424,13 +424,13 @@ def reranker_node(state: CivicSetuState) -> dict:
         log.info("node_timing", node="reranker", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), reranked=0)
         return {"reranked_chunks": []}
 
-    # Deduplicate by chunk_id
-    seen = set()
+    # Deduplicate by (section_id, doc_name) — handles duplicate DB rows from re-ingest
+    seen: set[tuple[str, str]] = set()
     unique_chunks = []
     for c in chunks:
-        cid = str(c.chunk.chunk_id)
-        if cid not in seen:
-            seen.add(cid)
+        key = (c.chunk.section_id, c.chunk.doc_name)
+        if key not in seen:
+            seen.add(key)
             unique_chunks.append(c)
 
     log.info("reranker_node", unique_chunks=len(unique_chunks))

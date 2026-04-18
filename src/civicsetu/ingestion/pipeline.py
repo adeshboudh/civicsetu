@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 from pathlib import Path
-from uuid import uuid4
+from uuid import NAMESPACE_DNS, uuid5
 
 import structlog
 
@@ -65,7 +65,7 @@ class IngestionPipeline:
         parsed = PDFParser.parse(local_path, max_pages=max_pages)
 
         # Step 3 — Chunk
-        doc_id = uuid4()
+        doc_id = uuid5(NAMESPACE_DNS, f"{doc_name}:{jurisdiction.value}")
         raw_chunks = LegalChunker.chunk(
             parsed_doc=parsed,
             doc_type=doc_type,
@@ -104,7 +104,7 @@ class IngestionPipeline:
             effective_date=effective_date,
             total_chunks=len(legal_chunks),
         )
-        asyncio.run(self._persist(doc, legal_chunks))
+        asyncio.run(self._persist(doc, legal_chunks, doc_id))
 
         log.info(
             "ingestion_complete",
@@ -115,7 +115,7 @@ class IngestionPipeline:
         return doc
 
     async def _persist(
-        self, doc: IngestedDocument, chunks: list[LegalChunk]
+        self, doc: IngestedDocument, chunks: list[LegalChunk], doc_id
     ) -> None:
         async with AsyncSessionLocal() as session:
             async with session.begin():
@@ -123,5 +123,6 @@ class IngestionPipeline:
 
         async with AsyncSessionLocal() as session:
             async with session.begin():
+                await RelationalStore.delete_chunks_by_doc(session, doc_id)
                 await RelationalStore.bulk_insert_chunks(session, chunks)
 

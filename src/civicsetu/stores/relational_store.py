@@ -160,6 +160,16 @@ class RelationalStore:
         })
 
     @staticmethod
+    async def delete_chunks_by_doc(session: AsyncSession, doc_id: UUID) -> int:
+        result = await session.execute(
+            text("DELETE FROM legal_chunks WHERE doc_id = :doc_id"),
+            {"doc_id": str(doc_id)},
+        )
+        deleted = result.rowcount
+        log.info("deleted_existing_chunks", doc_id=str(doc_id), count=deleted)
+        return deleted
+
+    @staticmethod
     async def bulk_insert_chunks(
         session: AsyncSession, chunks: list[LegalChunk]
     ) -> int:
