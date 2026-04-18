@@ -130,9 +130,9 @@ def build_judge():
     from ragas.embeddings import GoogleEmbeddings
     from google import genai
 
-    gemini_key = os.getenv("GEMINI_API_KEY_2")
+    gemini_key = os.getenv("JUDGE_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY_2")
     if not gemini_key:
-        print("ERROR: GEMINI_API_KEY_2 not set in .env (needed for embeddings + Gemini judge)", file=sys.stderr)
+        print("ERROR: GEMINI_API_KEY_2 (or JUDGE_GEMINI_API_KEY) not set in .env (needed for embeddings + Gemini judge)", file=sys.stderr)
         sys.exit(1)
 
     judge_embeddings = GoogleEmbeddings(
@@ -141,10 +141,19 @@ def build_judge():
     )
 
     if _is_gemini_model(JUDGE_MODEL):
-        from litellm import OpenAI as LiteLLMClient
+        import litellm
         model = JUDGE_MODEL if "/" in JUDGE_MODEL else f"gemini/{JUDGE_MODEL}"
-        llm_client = LiteLLMClient(api_key=gemini_key, model=model)
-        judge_llm = llm_factory(model, client=llm_client, max_tokens=8192)
+
+        async def llm_client(**kwargs):
+            return await litellm.acompletion(api_key=gemini_key, **kwargs)
+
+        judge_llm = llm_factory(
+            model,
+            provider="litellm",
+            client=llm_client,
+            adapter="instructor",
+            max_tokens=8192,
+        )
         print(f"  Judge LLM  : Gemini / {model}")
         print(f"  Embeddings : Google gemini-embedding-001")
     else:

@@ -286,12 +286,14 @@ async def _rrf_retrieve(
         seen_ids: set[str] = {str(r.chunk.chunk_id) for r in merged}
         expanded: list[RetrievedChunk] = list(merged)
 
-        for rc in merged[:1]:
+        for rc in merged[:3]:
             sid = rc.chunk.section_id
-            if not re.search(r'\(', str(sid)):  # base section only
-                jur = Jurisdiction(rc.chunk.jurisdiction)
+            jur = Jurisdiction(rc.chunk.jurisdiction)
+            # Expand family of base section (strip sub-section suffix if present)
+            base_sid = re.sub(r'\([^)]*\)$', '', str(sid)).strip()
+            for expand_sid in {str(sid), base_sid}:
                 family = await VectorStore.get_section_family(
-                    session=session, section_id=sid, jurisdiction=jur
+                    session=session, section_id=expand_sid, jurisdiction=jur
                 )
                 for fc in family:
                     cid = str(fc.chunk.chunk_id)
@@ -299,7 +301,7 @@ async def _rrf_retrieve(
                         seen_ids.add(cid)
                         expanded.append(fc)
 
-        _MAX_VECTOR_EXPANDED = 25
+        _MAX_VECTOR_EXPANDED = 40
         log.info(
             "rrf_retrieve_complete",
             vector_results=len(vector_results),

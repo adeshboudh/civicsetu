@@ -17,7 +17,10 @@ Classification rules (apply in order — first match wins):
 
 - penalty_lookup: asks about fines, punishments, jail, imprisonment, consequences of violation
 
-- temporal: asks about amendments, changes, history, "before/after", "as amended"
+- temporal: asks about amendments, changes, history, "before/after", "as amended",
+  OR about specific time periods, deadlines, timelines, day/month limits, registration windows
+  Keywords: timeline, deadline, days, months, period, within, by when, how long, registration period,
+  how many days, time limit, validity, expiry, commencement, schedule, stage-wise
 
 - cross_reference: query mentions a specific section number (e.g. "Section 18", "Rule 3", "s. 11")
   OR asks how sections relate, reference, cite, or interact with each other
@@ -34,4 +37,12 @@ Examples:
 - "What are the duties of a promoter?" → fact_lookup
 - "What is the penalty for not registering?" → penalty_lookup
 - "Was RERA amended in 2020?" → temporal
+- "What is the timeline for project registration?" → temporal, rewrite: "grant or reject registration within thirty days deemed registered period"
+- "How many days does the authority have to grant registration?" → temporal
+- "What is the stage-wise schedule for project completion?" → temporal
+
+Rewriting rules:
+- For temporal queries: expand the rewrite with specific legal time-period keywords that likely appear in
+  the relevant legal text (e.g., "within thirty days", "within a period of", "deemed registered", "expiry",
+  "renewal", "validity"). This ensures FTS can match sections that use specific time language.
 """
