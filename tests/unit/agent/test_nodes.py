@@ -351,37 +351,37 @@ def test_generator_system_prompt_includes_query_type_tone_hint(query_type, expec
 
 def test_get_ranker_uses_settings_model():
     """_get_ranker() must pass settings.reranker_model to Ranker constructor."""
-    import civicsetu.agent.nodes as nodes_mod
+    import civicsetu.retrieval.reranker as reranker_mod
     from unittest.mock import patch, MagicMock
-    nodes_mod._ranker = None  # clear module-level cache
+    reranker_mod._ranker = None  # clear module-level cache
 
-    with patch("civicsetu.agent.nodes.settings") as mock_settings:
+    with patch("civicsetu.retrieval.reranker.settings") as mock_settings:
         mock_settings.reranker_model = "rank-T5-flan"
         with patch("flashrank.Ranker") as MockRanker:
             MockRanker.return_value = MagicMock()
-            nodes_mod._get_ranker()
+            reranker_mod._get_ranker()
             MockRanker.assert_called_once_with(
                 model_name="rank-T5-flan", cache_dir=".cache/flashrank"
             )
-    nodes_mod._ranker = None  # clean up
+    reranker_mod._ranker = None  # clean up
 
 
 # ── _apply_score_gap ──────────────────────────────────────────────────────────
 
 def test_score_gap_empty():
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     assert _apply_score_gap([], gap=0.35) == []
 
 
 def test_score_gap_single():
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     c = _make_rc(rerank_score=0.8)
     assert _apply_score_gap([c], gap=0.35) == [c]
 
 
 def test_score_gap_no_gap():
     """All chunks pass when consecutive drops are below the gap threshold."""
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     chunks = [
         _make_rc(rerank_score=0.85),
         _make_rc(rerank_score=0.75),
@@ -393,7 +393,7 @@ def test_score_gap_no_gap():
 
 def test_score_gap_stops_at_cliff():
     """Stops after the chunk BEFORE the large drop."""
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     chunks = [
         _make_rc(rerank_score=0.88),
         _make_rc(rerank_score=0.82),
@@ -408,7 +408,7 @@ def test_score_gap_stops_at_cliff():
 
 def test_score_gap_gap_at_first_pair():
     """If the very first pair has a cliff, only the top chunk is kept."""
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     chunks = [
         _make_rc(rerank_score=0.90),
         _make_rc(rerank_score=0.40),
@@ -420,7 +420,7 @@ def test_score_gap_gap_at_first_pair():
 
 def test_score_gap_old_threshold_cuts_aggressively():
     """Old gap=0.35 cuts after position 1 when second chunk drops by 0.36."""
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     chunks = [
         _make_rc(rerank_score=0.88),
         _make_rc(rerank_score=0.52),  # gap = 0.36 >= 0.35 → cut
@@ -432,7 +432,7 @@ def test_score_gap_old_threshold_cuts_aggressively():
 
 def test_score_gap_new_threshold_keeps_more():
     """New gap=0.6 keeps chunks unless there's a 0.6+ cliff."""
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     chunks = [
         _make_rc(rerank_score=0.88),
         _make_rc(rerank_score=0.52),  # gap = 0.36 < 0.6 → keep
@@ -444,7 +444,7 @@ def test_score_gap_new_threshold_keeps_more():
 
 def test_score_gap_new_threshold_still_cuts_on_cliff():
     """New gap=0.6 still cuts when there's a genuine cliff."""
-    from civicsetu.agent.nodes import _apply_score_gap
+    from civicsetu.retrieval.reranker import _apply_score_gap
     chunks = [
         _make_rc(rerank_score=0.88),
         _make_rc(rerank_score=0.20),  # gap = 0.68 >= 0.6 → cut
@@ -471,7 +471,7 @@ def test_reranker_drops_below_threshold():
     with patch("flashrank.Ranker") as MockRanker:
         instance = MockRanker.return_value
         instance.rerank.return_value = mock_results
-        with patch("civicsetu.agent.nodes.settings") as ms:
+        with patch("civicsetu.retrieval.reranker.settings") as ms:
             ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
             ms.reranker_score_threshold = 0.3
             ms.reranker_score_gap = 0.35
@@ -505,7 +505,7 @@ def test_reranker_applies_score_gap():
     with patch("flashrank.Ranker") as MockRanker:
         instance = MockRanker.return_value
         instance.rerank.return_value = mock_results
-        with patch("civicsetu.agent.nodes.settings") as ms:
+        with patch("civicsetu.retrieval.reranker.settings") as ms:
             ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
             ms.reranker_score_threshold = 0.3
             ms.reranker_score_gap = 0.35
@@ -537,11 +537,11 @@ def test_reranker_filtered_count_logged():
     with patch("flashrank.Ranker") as MockRanker:
         instance = MockRanker.return_value
         instance.rerank.return_value = mock_results
-        with patch("civicsetu.agent.nodes.settings") as ms:
+        with patch("civicsetu.retrieval.reranker.settings") as ms:
             ms.reranker_model = "ms-marco-MiniLM-L-12-v2"
             ms.reranker_score_threshold = 0.3
             ms.reranker_score_gap = 0.35
-            with patch("civicsetu.agent.nodes.log") as mock_log:
+            with patch("civicsetu.retrieval.reranker.log") as mock_log:
                 state = _base_state(
                     retrieved_chunks=[c1, c2],
                     reranked_chunks=[],
