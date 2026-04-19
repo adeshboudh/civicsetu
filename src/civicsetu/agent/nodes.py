@@ -10,17 +10,14 @@ import structlog
 
 from civicsetu.agent.state import CivicSetuState
 from civicsetu.config.settings import get_settings
-from civicsetu.models.enums import QueryType, Jurisdiction
+from civicsetu.models.enums import QueryType
 from civicsetu.models.schemas import Citation, RetrievedChunk
 from civicsetu.prompts.classifier import CLASSIFIER_PROMPT
 from civicsetu.prompts.generator import GENERATOR_PROMPT
 from civicsetu.retrieval import cached_embed
-from civicsetu.stores.relational_store import AsyncSessionLocal
-from civicsetu.stores.vector_store import VectorStore
 
 log = structlog.get_logger(__name__)
 settings = get_settings()
-_ranker = None
 
 
 # ── LiteLLM fallback chain ─────────────────────────────────────────────────────
@@ -30,20 +27,6 @@ FALLBACK_MODELS = [
     settings.fallback_model_2,
     settings.fallback_model_1,
 ]
-
-
-def _get_ranker():
-    global _ranker
-    if _ranker is not None:
-        return _ranker
-
-    from flashrank import Ranker
-    ranker = Ranker(model_name=settings.reranker_model, cache_dir=".cache/flashrank")
-
-    # Do not cache unittest mocks, otherwise tests that patch Ranker bleed into each other.
-    if type(ranker).__module__ != "unittest.mock":
-        _ranker = ranker
-    return ranker
 
 
 def turn_reset_node(state: CivicSetuState) -> dict:
@@ -221,105 +204,20 @@ def classifier_node(state: CivicSetuState) -> dict:
 
 # ── Node 2: Vector Retriever (hybrid: vector + FTS via RRF) ───────────────────
 
-_RRF_K = 60  # standard RRF constant — higher = smoother rank blending
-
-
-def _rrf_merge(
-    vector_results: list[RetrievedChunk],
-    fts_results: list[RetrievedChunk],
-    top_n: int,
-) -> list[RetrievedChunk]:
-    """
-    Reciprocal Rank Fusion of vector and full-text search results.
-    RRF score = 1/(k + rank_vector) + 1/(k + rank_fts).
-    Deduplicates by chunk_id; chunks appearing in both lists score highest.
-    """
-    rrf_scores: dict[str, float] = {}
-    chunk_map: dict[str, RetrievedChunk] = {}
-
-    for rank, rc in enumerate(vector_results, 1):
-        cid = str(rc.chunk.chunk_id)
-        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank)
-        chunk_map[cid] = rc
-
-    for rank, rc in enumerate(fts_results, 1):
-        cid = str(rc.chunk.chunk_id)
-        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank)
-        if cid not in chunk_map:
-            chunk_map[cid] = rc
-
-    ranked = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-    return [chunk_map[cid] for cid, _ in ranked[:top_n]]
-
-
 async def _rrf_retrieve(
     query: str,
     query_embedding: list[float],
     top_k: int,
     jurisdiction: str | None,
 ) -> list[RetrievedChunk]:
-    """
-    Shared RRF hybrid retrieval: vector similarity + PostgreSQL FTS merged via
-    Reciprocal Rank Fusion, with top base-section family expansion.
-    Used by vector_retrieval_node, graph fallback, and hybrid fallback.
-    """
-    import re
-    async with AsyncSessionLocal() as session:
-        # Sequential — AsyncSession is not safe for concurrent coroutines
-        vector_results = await VectorStore.similarity_search(
-            session=session,
-            query_embedding=query_embedding,
-            top_k=top_k * 3,
-            jurisdiction=jurisdiction,
-            active_only=True,
-        )
-        fts_results = await VectorStore.full_text_search(
-            session=session,
-            query=query,
-            top_k=top_k * 2,
-            jurisdiction=jurisdiction,
-            active_only=True,
-        )
-
-        merged = _rrf_merge(vector_results, fts_results, top_n=top_k * 2)
-
-        seen_ids: set[str] = {str(r.chunk.chunk_id) for r in merged}
-        expanded: list[RetrievedChunk] = list(merged)
-
-        for rc in merged[:3]:
-            sid = rc.chunk.section_id
-            jur = Jurisdiction(rc.chunk.jurisdiction)
-            # Expand family of base section (strip sub-section suffix if present)
-            base_sid = re.sub(r'\([^)]*\)$', '', str(sid)).strip()
-            for expand_sid in {str(sid), base_sid}:
-                family = await VectorStore.get_section_family(
-                    session=session, section_id=expand_sid, jurisdiction=jur
-                )
-                for fc in family:
-                    cid = str(fc.chunk.chunk_id)
-                    if cid not in seen_ids:
-                        seen_ids.add(cid)
-                        expanded.append(fc)
-
-        _MAX_VECTOR_EXPANDED = 40
-        log.info(
-            "rrf_retrieve_complete",
-            vector_results=len(vector_results),
-            fts_results=len(fts_results),
-            merged=len(merged),
-            results=min(len(expanded), _MAX_VECTOR_EXPANDED),
-        )
-        return expanded[:_MAX_VECTOR_EXPANDED]
+    """Shim: delegates to VectorRetriever for backward compatibility with graph/hybrid nodes."""
+    from civicsetu.retrieval.vector_retriever import VectorRetriever
+    return await VectorRetriever.retrieve(query, query_embedding, top_k, jurisdiction)
 
 
 def vector_retrieval_node(state: CivicSetuState) -> dict:
-    """
-    Hybrid retrieval: vector similarity + PostgreSQL full-text search merged
-    via Reciprocal Rank Fusion (RRF). FTS catches entity-type distinctions
-    (promoter vs agent, Section 59 vs Section 62) that fool pure vector search.
-    After merging, expands the top base-section hit into its sub-chunk family.
-    Returns: retrieved_chunks
-    """
+    from civicsetu.retrieval.vector_retriever import VectorRetriever
+
     query = state.get("rewritten_query") or state["query"]
     top_k = state.get("top_k", 5)
     jurisdiction = state.get("jurisdiction_filter")
@@ -329,12 +227,15 @@ def vector_retrieval_node(state: CivicSetuState) -> dict:
 
     embed_start = time.perf_counter()
     query_embedding = cached_embed(query)
-    log.info("stage_timing", node="vector_retrieval", stage="embedding", duration_ms=round((time.perf_counter() - embed_start) * 1000, 2))
+    log.info("stage_timing", node="vector_retrieval", stage="embedding",
+             duration_ms=round((time.perf_counter() - embed_start) * 1000, 2))
 
     retrieve_start = time.perf_counter()
-    chunks = asyncio.run(_rrf_retrieve(query, query_embedding, top_k, jurisdiction))
-    log.info("stage_timing", node="vector_retrieval", stage="postgres_retrieval", duration_ms=round((time.perf_counter() - retrieve_start) * 1000, 2))
-    log.info("node_timing", node="vector_retrieval", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), results=len(chunks))
+    chunks = asyncio.run(VectorRetriever.retrieve(query, query_embedding, top_k, jurisdiction))
+    log.info("stage_timing", node="vector_retrieval", stage="postgres_retrieval",
+             duration_ms=round((time.perf_counter() - retrieve_start) * 1000, 2))
+    log.info("node_timing", node="vector_retrieval",
+             duration_ms=round((time.perf_counter() - node_start) * 1000, 2), results=len(chunks))
     return {"retrieved_chunks": chunks}
 
 
@@ -392,103 +293,25 @@ def graph_retrieval_node(state: CivicSetuState) -> dict:
     return {"retrieved_chunks": chunks}
 
 
-def _apply_score_gap(chunks: list[RetrievedChunk], gap: float) -> list[RetrievedChunk]:
-    """
-    Returns a prefix of `chunks` (assumed sorted by rerank_score descending).
-    Stops as soon as the drop from one chunk to the next meets or exceeds `gap`.
-    Example: gap=0.35, scores=[0.88, 0.82, 0.40] → returns first 2 (0.82→0.40 = 0.42 >= 0.35).
-    """
-    if len(chunks) <= 1:
-        return list(chunks)
-    result = [chunks[0]]
-    for prev, curr in zip(chunks, chunks[1:]):
-        if (prev.rerank_score or 0.0) - (curr.rerank_score or 0.0) >= gap:
-            break
-        result.append(curr)
-    return result
-
-
 # ── Node 3: Reranker ───────────────────────────────────────────────────────────
 
 def reranker_node(state: CivicSetuState) -> dict:
-    """
-    Reranks retrieved chunks using FlashRank cross-encoder.
-    Deduplicates by chunk_id first, then scores.
-    Returns: reranked_chunks (top 5 max)
-    """
-    from flashrank import RerankRequest
+    from civicsetu.retrieval.reranker import Reranker
 
     chunks = state.get("retrieved_chunks", [])
     query = state.get("rewritten_query") or state["query"]
     node_start = time.perf_counter()
 
     if not chunks:
-        log.info("node_timing", node="reranker", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), reranked=0)
+        log.info("node_timing", node="reranker",
+                 duration_ms=round((time.perf_counter() - node_start) * 1000, 2), reranked=0)
         return {"reranked_chunks": []}
 
-    # Deduplicate by (section_id, doc_name) — handles duplicate DB rows from re-ingest
-    seen: set[tuple[str, str]] = set()
-    unique_chunks = []
-    for c in chunks:
-        key = (c.chunk.section_id, c.chunk.doc_name)
-        if key not in seen:
-            seen.add(key)
-            unique_chunks.append(c)
+    reranked = Reranker.rerank(chunks, query)
 
-    log.info("reranker_node", unique_chunks=len(unique_chunks))
-
-    # Separate pinned (source sections) from rankable
-    pinned = [c for c in unique_chunks if c.is_pinned][:2]
-    rankable = [c for c in unique_chunks if not c.is_pinned]
-
-    try:
-        init_start = time.perf_counter()
-        ranker = _get_ranker()
-        log.info("stage_timing", node="reranker", stage="ranker_init", duration_ms=round((time.perf_counter() - init_start) * 1000, 2))
-        passages = [{"id": i, "text": c.chunk.text} for i, c in enumerate(rankable)]
-        request = RerankRequest(query=query, passages=passages)
-        inference_start = time.perf_counter()
-        results = ranker.rerank(request)
-        log.info("stage_timing", node="reranker", stage="ranker_inference", duration_ms=round((time.perf_counter() - inference_start) * 1000, 2), passages=len(passages))
-
-        # Map scores back to chunks
-        id_to_chunk = {i: c for i, c in enumerate(rankable)}
-        reranked_rankable = []
-        for r in results:
-            chunk = id_to_chunk[r["id"]]
-            chunk.rerank_score = round(float(r["score"]), 4)
-            reranked_rankable.append(chunk)
-
-        # Filter 1: drop chunks below the absolute score threshold
-        above_threshold = [
-            c for c in reranked_rankable
-            if (c.rerank_score or 0.0) >= settings.reranker_score_threshold
-        ]
-
-        # Filter 2: stop at the first large score cliff (dynamic top-k)
-        gap_filtered = _apply_score_gap(above_threshold, settings.reranker_score_gap)
-
-        dropped = len(reranked_rankable) - len(gap_filtered)
-        log.info(
-            "reranker_filtered",
-            before=len(reranked_rankable),
-            after=len(gap_filtered),
-            dropped=dropped,
-            threshold=settings.reranker_score_threshold,
-            gap=settings.reranker_score_gap,
-        )
-
-        slots_for_ranked = max(0, 5 - len(pinned))
-        reranked = pinned + gap_filtered[:slots_for_ranked]
-
-
-    except Exception as e:
-        log.warning("reranker_failed", error=str(e), fallback="vector_order")
-        slots_for_ranked = max(0, 5 - len(pinned))
-        reranked = pinned + rankable[:slots_for_ranked]
-
-    log.info("reranker_complete", reranked=len(reranked), pinned=len(pinned))
-    log.info("node_timing", node="reranker", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), unique_chunks=len(unique_chunks), rankable=len(rankable), pinned=len(pinned), reranked=len(reranked))
+    log.info("reranker_complete", reranked=len(reranked))
+    log.info("node_timing", node="reranker",
+             duration_ms=round((time.perf_counter() - node_start) * 1000, 2), reranked=len(reranked))
     return {"reranked_chunks": reranked}
 
 
