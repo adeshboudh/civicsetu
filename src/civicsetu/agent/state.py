@@ -38,3 +38,6 @@ class CivicSetuState(TypedDict):
     error: str | None
     skip_classifier: NotRequired[bool]
     source_section_id: NotRequired[str]
+    pinned_section_refs: NotRequired[list[str]]
+    pinned_section_jurisdiction: NotRequired[Jurisdiction]
+    pinned_section_hint: NotRequired[str]

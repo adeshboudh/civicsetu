@@ -101,13 +101,13 @@ def test_rerank_pinned_chunks_always_first():
     assert result[0].is_pinned is True
 
 
-def test_rerank_max_two_pinned():
+def test_rerank_keeps_pinned_chunks_up_to_context_limit():
     from civicsetu.retrieval.reranker import Reranker
     pinned = [_make_rc(section_id=str(i), is_pinned=True) for i in range(4)]
     with patch("flashrank.Ranker") as MockRanker:
         MockRanker.return_value.rerank.return_value = []
         result = Reranker.rerank(pinned, query="test")
-    assert len([c for c in result if c.is_pinned]) <= 2
+    assert len([c for c in result if c.is_pinned]) == 4
 
 
 def test_rerank_deduplicates_by_section_and_doc():
@@ -160,7 +160,7 @@ def test_rerank_fallback_on_ranker_exception():
     assert len(result) > 0
 
 
-def test_rerank_max_five_results():
+def test_rerank_max_seven_results():
     from civicsetu.retrieval.reranker import Reranker
     chunks = [_make_rc(section_id=str(i)) for i in range(10)]
     mock_results = [{"id": i, "score": 0.9 - i * 0.01} for i in range(10)]
@@ -171,4 +171,4 @@ def test_rerank_max_five_results():
             ms.reranker_score_threshold = 0.0
             ms.reranker_score_gap = 999.0
             result = Reranker.rerank(chunks, query="test")
-    assert len(result) <= 5
+    assert len(result) <= 7

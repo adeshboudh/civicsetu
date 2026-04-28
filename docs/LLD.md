@@ -1,6 +1,6 @@
 # CivicSetu — Low Level Design (LLD)
 
-**Version:** 1.0.0 — Phase 6 Complete (Next.js Frontend + Vercel)
+**Version:** 2.0.0 — Phase 8 Complete (RAGAS Evaluation + Retrieval Improvements)
 **Live:** https://civicsetu-two.vercel.app
 **Last Updated:** April 2026
 
@@ -21,8 +21,8 @@ src/civicsetu/
 │   ├── parser.py             PyMuPDF text extractor — max_pages cap, scanned PDF detection
 │   ├── chunker.py            Section-boundary regex chunker — 6 format patterns + fallback
 │   ├── metadata_extractor.py Date/Section/Rule reference/amendment regex extraction
-│   ├── embedder.py           nomic-embed-text via Ollama — truncate at 4000 chars pre-prefix
-│   ├── pipeline.py           Orchestrates all ingestion steps end-to-end
+│   ├── embedder.py           nomic-embed-text-v1.5 via sentence-transformers — truncate at 4000 chars pre-prefix
+│   ├── pipeline.py           Orchestrates ingestion; prepends section_title to embeddings
 │   └── graph_seeder.py       Post-ingestion REFERENCES + DERIVED_FROM edge seeding
 ├── stores/
 │   ├── relational_store.py   Async SQLAlchemy — documents + legal_chunks tables
@@ -34,8 +34,9 @@ src/civicsetu/
 │   └── reranker.py           FlashRank cross-encoder wrapper
 ├── agent/
 │   ├── state.py              CivicSetuState TypedDict (frozen contract)
-│   ├── nodes.py              Pure functions: classifier, retrieval, reranker,
-│   │                         generator, validator
+│   ├── nodes.py              Pure functions: classifier, _rrf_retrieve (shared hybrid),
+│   │                         vector_retrieval, graph_retrieval, hybrid_retrieval,
+│   │                         reranker, generator, validator
 │   ├── edges.py              Conditional routing: route_after_classifier,
 │   │                         route_after_validator
 │   └── graph.py              StateGraph assembly + get_compiled_graph()
@@ -54,6 +55,11 @@ src/civicsetu/
     │   └── ingest.py         POST /api/v1/ingest — admin endpoint
     └── middleware/
         └── logging.py        Request/response structured logging
+
+eval/
+├── golden_dataset.jsonl      31-row RAGAS evaluation dataset across 5 jurisdictions
+scripts/
+├── run_eval.py               Two-phase RAGAS evaluation: Phase 1 (graph invoke) + Phase 2 (RAGAS scoring)
 
 frontend/                     Next.js 15 App Router — deployed on Vercel
 ├── src/app/
@@ -252,11 +258,11 @@ class RetrievedChunk(BaseModel):
 
 | classifier → route_after_classifier   |                                          |
 |---------------------------------------|------------------------------------------|
-| fact_lookup                           | vector_retrieval                         |
-| cross_reference                       | graph_retrieval (→ vector fallback)      |
-| penalty_lookup                        | graph_retrieval (→ vector fallback)      |
-| temporal                              | graph_retrieval (→ vector fallback)      |
-| conflict_detection                    | hybrid_retrieval (Phase 7)               |
+| fact_lookup                           | vector_retrieval (RRF hybrid)            |
+| cross_reference                       | graph_retrieval (→ RRF fallback)         |
+| penalty_lookup                        | graph_retrieval (→ RRF fallback)         |
+| temporal                              | graph_retrieval (→ RRF fallback)         |
+| conflict_detection                    | hybrid_retrieval (RRF across jur.)       |
 
 ```
 validator → route_after_validator:
@@ -315,14 +321,19 @@ def parse(source: str | Path, max_pages: int | None = None) -> ParsedDocument:
 
 ## 6. Embedding Strategy
 
-**Model:** `nomic-embed-text` (Ollama local)
+**Model:** `nomic-embed-text-v1.5` (via `sentence-transformers`, local — no Ollama required)
 **Dimension:** 768
-**Asymmetric prefixes:**
+**Asymmetric prefixes** (MTEB/nomic-embed requirement):
 
 ```
-Ingestion time:  "search_document: {text}"   → embed_document()
-Query time:      "search_query: {query}"     → embed_query()
+Ingestion time:  "search_document: {section_title}\n{text}"  → pipeline.py
+Query time:      "search_query: {rewritten_query}"            → retrieval/__init__.py
 ```
+
+**Section title prepend (Phase 8 change):** `pipeline.py` prepends `section_title` to the
+embedded text so sub-chunks (e.g. `S.11(2)`) retain their section context.
+Without this, sub-chunks embed without "Obligations of promoter" — cosine similarity misses them.
+The reranker still receives raw `chunk.text` (no title prefix).
 
 Using wrong prefix at query time causes ~10–15% recall degradation.
 
@@ -344,7 +355,77 @@ and other gazette PDFs where sub-sections exceed 10K chars.
 
 ---
 
-## 7. Graph Retriever
+## 7. Hybrid Retrieval — `_rrf_retrieve()`
+
+All retrieval nodes share a single async helper `_rrf_retrieve()` in `agent/nodes.py`.
+
+### Reciprocal Rank Fusion (RRF)
+
+```python
+RRF_K = 60   # standard constant
+
+rrf_score(chunk) = 1/(K + rank_in_vector) + 1/(K + rank_in_fts)
+```
+
+Fetches `top_k × 3` vector results and `top_k × 2` FTS results, deduplicates by `chunk_id`,
+merges via RRF, returns top `top_k × 2`.
+
+### Full-Text Search
+
+`VectorStore.full_text_search()` uses `websearch_to_tsquery` in OR mode:
+
+```sql
+WHERE to_tsvector('english', text) @@ websearch_to_tsquery('english', :query)
+ORDER BY ts_rank(to_tsvector('english', text), websearch_to_tsquery('english', :query)) DESC
+```
+
+Changed from `plainto_tsquery` (AND-mode) — AND required all query words to match,
+excluding relevant sections that matched most but not all words.
+
+### Section Family Expansion
+
+After RRF merge, top-3 results trigger family expansion:
+
+```python
+for rc in merged[:3]:
+    base_sid = re.sub(r'\([^)]*\)$', '', section_id).strip()  # "5(4)" → "5"
+    family = await VectorStore.get_section_family(section_id=base_sid, jurisdiction=jur)
+    # returns all chunks where section_id = '5' OR section_id LIKE '5(%'
+```
+
+`get_section_family` guard: skips if `section_id` already contains `(` (base_sid computation
+strips this before calling). Hard cap: `_MAX_VECTOR_EXPANDED = 40` chunks before reranker.
+
+**Why top-3 not top-1:** If top-1 RRF result is a sub-section (`S.5(4)`), its parent
+family is expanded. But if the truly relevant parent section (`S.11`) appears at RRF rank 2,
+only expanding top-1 misses it. Expanding top-3 covers more cases at the cost of a slightly
+larger pool.
+
+---
+
+## 7b. Reranker Detail
+
+`reranker_score_threshold = 0.1` — minimum cross-encoder score to enter candidate pool.
+`reranker_score_gap = 0.6` — gap filter cliff threshold.
+
+**Gap filter:**
+
+```python
+def _apply_score_gap(chunks, gap=0.6):
+    for i in range(1, len(chunks)):
+        if chunks[i-1].rerank_score - chunks[i].rerank_score >= gap:
+            return chunks[:i]
+    return chunks
+```
+
+**Threshold history:** Originally `threshold=0.3, gap=0.35`. Gap=0.35 was too aggressive —
+cut chunks with 0.36 score drop, leaving only 1 context for generator. Raised to 0.6 (Phase 8).
+
+Final context: `pinned_chunks + gap_filtered[:max(0, 5 - len(pinned))]` → max 5 chunks.
+
+---
+
+## 8. Graph Retriever
 
 `graph_retriever.py` — called on `cross_reference`, `penalty_lookup`, `temporal` query types.
 
@@ -374,7 +455,7 @@ Max pinned chunks: 2 (one per jurisdiction). Remaining 3 slots filled by reranke
 
 ---
 
-## 8. Response Contract
+## 9. Response Contract
 
 ```python
 CivicSetuResponse:
@@ -471,15 +552,23 @@ Matches every other `VectorStore` method.
 ### Fix 2 — `nodes.py::vector_retrieval_node` — Reranker blowup on section expansion
 
 Section family expansion ran on all 5 similarity hits → up to 121 chunks → FlashRank
-cross-encoder serial scoring → 65s reranker time. Fix: expand top-1 hit only; hard
+cross-encoder serial scoring → 65s reranker time. Fix (Phase 5): expand top-1 hit only; hard
 cap at 25 chunks before reranker.
 
 ```python
-# Expand only the single best similarity hit
 for rc in results[:1]:
     ...family expansion...
-
 expanded = expanded[:25]  # hard safety cap
+```
+
+**Phase 8 update:** Expanded to top-3 after RAGAS eval revealed that when a sub-section
+(e.g. `S.5(4)`) ranks #1, its parent `S.5` (with the 30-day rule) was never expanded.
+Cap raised to 40 to accommodate larger families.
+
+```python
+for rc in merged[:3]:    # top-3 RRF results (was: top-1)
+    ...family expansion...
+expanded = expanded[:40]  # was: 25
 ```
 
 
@@ -503,3 +592,55 @@ Validator can now match cited section numbers to source context.
 | Slow (>20s) | 3 | **0** |
 | Low conf (<0.7) | 2 | **0** |
 | Pass rate | 12/12 | **12/12** |
+
+---
+
+## 12. Agent Pipeline — RAGAS Eval Fixes (Phase 8, April 2026)
+
+Five changes from RAGAS evaluation revealing retrieval and faithfulness failures.
+
+### Fix 4 — Reranker thresholds too aggressive (`settings.py`)
+
+Old `score_gap=0.35` cut after any 0.36 point drop → only 1 chunk reached generator.
+New: `score_threshold=0.1`, `score_gap=0.6`. Keeps secondary relevant chunks while still
+filtering genuine noise (0.98 → 0.20 drop would still cut at 0.78 gap).
+
+### Fix 5 — Generator analogy instruction caused hallucination (`generator.py`)
+
+"Use an analogy or real-world example" produced analogies ("Think of it like selling a
+used car") not present in retrieved context → faithfulness judge scored as hallucination.
+Fix: removed analogy instruction; replaced with "using only information from the provided context".
+
+### Fix 6 — Generator weak grounding for sparse contexts (`generator.py`)
+
+Generator constructed legal conclusions from reasoning even when context lacked evidence.
+Added explicit rules:
+- For sparse context: say "Based on the available context: [X]" and note missing elements
+- For conflict detection: only assert conflict if BOTH provisions present in context
+
+### Fix 7 — CONFLICT_DETECTION tone hint implied precedence reasoning (`nodes.py`)
+
+Tone hint said "state which jurisdiction takes precedence when context supports it" —
+LLM interpreted "when context supports it" loosely and applied legal reasoning.
+Rewritten to: "Never infer precedence from legal reasoning — only state precedence if
+the context explicitly says so."
+
+### Fix 8 — Temporal query rewrite too generic (`classifier.py`)
+
+Query "What is the timeline for project registration?" produced rewrite "registration
+timeline period" — FTS missed Section 5 which uses "within thirty days" and "deemed registered".
+Added rewriting guidance to expand temporal queries with specific legal time-period keywords.
+
+### RAGAS Results (Phase 8 baseline, 5-row smoke, gemma-4-31b-it judge)
+
+| Row | Faith (before) | Faith (after) | Prec (before) | Prec (after) |
+|---|---|---|---|---|
+| CENTRAL-FACT-001 | 1.00 | 0.50 | 0.00 | 0.00 |
+| CENTRAL-FACT-002 | 0.80 | 0.62 | 0.00 | 0.33 |
+| CENTRAL-XREF-001 | 0.63 | 0.50 | 1.00 | 1.00 |
+| CENTRAL-CONF-001 | 0.00 | 0.62 | 0.00 | 0.00 |
+| CENTRAL-TEMP-001 | 0.67 | 1.00 | 1.00 | 0.00 |
+| **Overall** | 0.618 | **0.650** | 0.400* | 0.267 |
+
+\* Before baseline had inflated precision from duplicate chunks (non-deterministic doc_id).
+After Phase 8: deterministic UUID5 chunk IDs prevent duplicates on re-ingest.

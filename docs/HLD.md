@@ -1,8 +1,8 @@
 # CivicSetu — High Level Design (HLD)
 
-+ **Version:** 1.0.0 — Phase 6 Complete
-+ **Status:** Phase 6 Complete — Next.js frontend live at https://civicsetu-two.vercel.app
-+ **Current Scope:** RERA Act 2016 (Central) + Maharashtra, Uttar Pradesh, Karnataka, Tamil Nadu Rules.
+**Version:** 1.0.0 — Phase 8 Complete
+**Status:** Phase 8 Complete — RAGAS evaluation pipeline live; retrieval improvements shipped
+**Current Scope:** RERA Act 2016 (Central) + Maharashtra, Uttar Pradesh, Karnataka, Tamil Nadu Rules.
 
 ---
 
@@ -15,7 +15,7 @@ amendment tracking, and conflict detection between laws.
 **Target Users:** Indian citizens, lawyers, homebuyers, activists navigating RERA, RTI,
 labor law, GST compliance, and other civic frameworks.
 
-**Current Scope:** RERA Act 2016 (Central) + Maharashtra Real Estate Rules 2017.
+**Current Scope:** RERA Act 2016 (Central) + Maharashtra, Uttar Pradesh, Karnataka, Tamil Nadu Rules (5 jurisdictions).
 
 ---
 
@@ -86,13 +86,14 @@ Triggered on every `POST /api/v1/query`.
 User Query
 → Input Guardrails  (PII + off-topic filter)
 → Classifier Node   (LLM — query_type + rewritten_query)
-→ Vector Retrieval  (pgvector cosine search, top_k chunks)           ← fact_lookup
+→ Vector Retrieval  (RRF: pgvector cosine + PostgreSQL FTS merged)    ← fact_lookup
 → Graph Retrieval   (Neo4j — REFERENCES + DERIVED_FROM traversal)    ← cross_reference / penalty / temporal
   ├── Outgoing REFERENCES  (sections this section cites)
   ├── Incoming REFERENCES  (sections that cite this section)
   ├── DERIVED_FROM outgoing (Act sections this Rule derives from)
   └── DERIVED_FROM incoming (Rule sections that implement this Act section)
-  Fallback: vector retrieval when no section ID in query
+  Fallback: RRF hybrid retrieval when no section ID in query
+→ Hybrid Retrieval  (dual-query RRF across jurisdictions)             ← conflict_detection
 → Source section pinning (exact match chunks bypass reranker)
 → Reranker          (FlashRank ms-marco-MiniLM-L-12-v2, cross-encoder)
 → Generator Node    (LLM — structured JSON answer with citations)
@@ -106,22 +107,22 @@ User Query
 
 ## 4. Component Responsibilities
 
-| Component          | Responsibility                                        | Technology                      |
-|--------------------|-------------------------------------------------------|---------------------------------|
-| DocumentRegistry   | Centralised doc URL + metadata management             | Python dataclass                |
-| PDFParser          | Text extraction from PDFs                             | PyMuPDF                         |
-| LegalChunker       | Multi-format section-boundary splitting               | Regex (Act + Rule patterns)     |
-| MetadataExtractor  | Date, Section X + Rule X reference, amendment extract | Regex                           |
-| Embedder           | Dense vector generation + truncation guard            | nomic-embed-text (Ollama)       |
-| VectorStore        | Semantic similarity search                            | pgvector + HNSW                 |
-| GraphStore         | Section relationship traversal — fresh driver per call| Neo4j Community                 |
-| GraphSeeder        | Post-ingestion REFERENCES + DERIVED_FROM edge seeding | Neo4j Cypher                    |
-| RelationalStore    | Metadata persistence + chunk storage                  | PostgreSQL + SQLAlchemy         |
-| LangGraph Agent    | Query orchestration state machine                     | LangGraph                       |
-| LiteLLM Gateway    | LLM provider fallback routing                         | LiteLLM                         |
-| FastAPI            | HTTP API layer                                        | FastAPI + Uvicorn               |
-| FlashRank          | Cross-encoder reranking (pinned source chunks exempt) | ONNX local model                |
-| Next.js Frontend   | Chat UI, multi-turn sessions, citations panel         | Next.js 15 App Router + Vercel  |
+| Component         | Responsibility                                         | Technology                     |
+| ----------------- | ------------------------------------------------------ | ------------------------------ |
+| DocumentRegistry  | Centralised doc URL + metadata management              | Python dataclass               |
+| PDFParser         | Text extraction from PDFs                              | PyMuPDF                        |
+| LegalChunker      | Multi-format section-boundary splitting                | Regex (Act + Rule patterns)    |
+| MetadataExtractor | Date, Section X + Rule X reference, amendment extract  | Regex                          |
+| Embedder          | Dense vector generation + truncation guard             | nomic-embed-text (Ollama)      |
+| VectorStore       | Semantic similarity search                             | pgvector + HNSW                |
+| GraphStore        | Section relationship traversal — fresh driver per call | Neo4j Community                |
+| GraphSeeder       | Post-ingestion REFERENCES + DERIVED_FROM edge seeding  | Neo4j Cypher                   |
+| RelationalStore   | Metadata persistence + chunk storage                   | PostgreSQL + SQLAlchemy        |
+| LangGraph Agent   | Query orchestration state machine                      | LangGraph                      |
+| LiteLLM Gateway   | LLM provider fallback routing                          | LiteLLM                        |
+| FastAPI           | HTTP API layer                                         | FastAPI + Uvicorn              |
+| FlashRank         | Cross-encoder reranking (pinned source chunks exempt)  | ONNX local model               |
+| Next.js Frontend  | Chat UI, multi-turn sessions, citations panel          | Next.js 15 App Router + Vercel |
 
 ---
 
@@ -129,10 +130,11 @@ User Query
 
 ```
 
-Primary  → gemini/gemini-3.1-flash-lite-preview  (Gemini API)
-Backup 1 → groq/llama-3.3-70b-versatile          (Groq API)
-Backup 2 → openrouter/:free models               (OpenRouter)
-Local    → ollama/mistral                         (local, offline)
+Primary  → gemini/gemini-2.5-flash-lite                          (Gemini API)
+Backup 1 → openrouter/meta-llama/llama-3.3-70b-instruct:free     (OpenRouter)
+Backup 2 → groq/llama-3.3-70b-versatile                          (Groq API)
+Backup 3 → openrouter/qwen/qwen3.6-plus:free                     (OpenRouter)
+Local    → ollama/mistral                                         (offline)
 
 ```
 
@@ -173,25 +175,28 @@ Output: {
 
 ## 7. Phase Roadmap
 
-| Phase | Scope                                              | Status          |
-|-------|----------------------------------------------------|-----------------|
-| 0     | RERA Act 2016, vector RAG, FastAPI                 | ✅ Complete     |
-| 1     | Neo4j graph, cross-reference queries               | ✅ Complete     |
-| 2     | MahaRERA Rules 2017, multi-jurisdiction            | ✅ Complete     |
-| 3     | DERIVED_FROM edges, cross-jurisdiction graph       | ✅ Complete     |
-| 4     | Multi-state expansion (UP, TN, Karnataka RERA)     | ✅ Complete     |
-| 5     | Agent pipeline hardening, E2E test suite           | ✅ Complete     |
-| 6     | Next.js frontend, Vercel deployment, public URL    | ✅ Complete     |
-| 7     | Graph explorer, section content drawer, D3 vis     | ✅ Complete     |
+| Phase | Scope                                            | Status      |
+| ----- | ------------------------------------------------ | ----------- |
+| 0     | RERA Act 2016, vector RAG, FastAPI               | ✅ Complete |
+| 1     | Neo4j graph, cross-reference queries             | ✅ Complete |
+| 2     | MahaRERA Rules 2017, multi-jurisdiction          | ✅ Complete |
+| 3     | DERIVED_FROM edges, cross-jurisdiction graph     | ✅ Complete |
+| 4     | Multi-state expansion (UP, TN, Karnataka RERA)   | ✅ Complete |
+| 5     | Agent pipeline hardening, E2E test suite         | ✅ Complete |
+| 6     | Next.js frontend, Vercel deployment, public URL  | ✅ Complete |
+| 7     | Graph explorer, section content drawer, D3 vis   | ✅ Complete |
+| 8     | RAGAS eval pipeline, hybrid RRF, retrieval fixes | ✅ Complete |
 
 ---
 
 ## 8. Non-Functional Requirements
 
-| Requirement        | Target                               | Current Status                         |
-|--------------------|--------------------------------------|----------------------------------------|
-| Response latency   | < 10s per query                      | 7.6s avg — 12/12 E2E PASS (2026-03-22). Live at https://civicsetu-two.vercel.app |
-| Citation accuracy  | 100% — never answer without citation | Enforced by schema                     |
-| Hallucination rate | < 5%                                 | Validator node + confidence gate       |
-| Cost               | $0 for dev/staging                   | All free tier                          |
-| Portability        | Runs on any machine with Docker      | Docker Compose                         |
+| Requirement               | Target                               | Current Status                                                                   |
+| ------------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
+| Response latency          | < 10s per query                      | 7.6s avg — 12/12 E2E PASS (2026-03-22). Live at https://civicsetu-two.vercel.app |
+| Citation accuracy         | 100% — never answer without citation | Enforced by schema                                                               |
+| Hallucination rate        | < 5%                                 | Validator node + confidence gate                                                 |
+| Cost                      | $0 for dev/staging                   | All free tier                                                                    |
+| Portability               | Runs on any machine with Docker      | Docker Compose                                                                   |
+| Faithfulness (RAGAS)      | ≥ 0.75 overall                       | 0.650 (Phase 8 baseline, 5-row smoke)                                            |
+| Context precision (RAGAS) | ≥ 0.65 overall                       | 0.267 (Phase 8 baseline, 5-row smoke)                                            |

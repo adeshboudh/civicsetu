@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 
 import litellm
@@ -10,23 +11,57 @@ import structlog
 
 from civicsetu.agent.state import CivicSetuState
 from civicsetu.config.settings import get_settings
-from civicsetu.models.enums import QueryType
+from civicsetu.models.enums import Jurisdiction, QueryType
 from civicsetu.models.schemas import Citation, RetrievedChunk
 from civicsetu.prompts.classifier import CLASSIFIER_PROMPT
 from civicsetu.prompts.generator import GENERATOR_PROMPT
 from civicsetu.retrieval import cached_embed
+from civicsetu.stores.vector_store import VectorStore
 
 log = structlog.get_logger(__name__)
 settings = get_settings()
 
+_PINNED_SECTION_RE = re.compile(
+    r"^\s*(?:(section|sec\.?|s\.|rule)\s*)?(\d+(?:\([^)]*\))?[A-Z]?)\s*$",
+    re.IGNORECASE,
+)
+_PIN_HINT_STOPWORDS = {
+    "about", "after", "against", "along", "and", "are", "authority", "central",
+    "does", "each", "from", "handle", "have", "into", "karnataka", "must",
+    "project", "promoter", "rera", "rule", "section", "shall", "that", "the",
+    "this", "under", "what", "when", "which", "with",
+}
+_PIN_HINT_EXPANSIONS = {
+    "account": {"bank", "deposited", "separate", "seventy"},
+    "accounts": {"bank", "deposited", "separate", "seventy"},
+    "comply": {"default", "required", "rules", "regulations"},
+    "compliance": {"default", "required", "rules", "regulations"},
+    "fraudulent": {"deceptive", "irregularities", "misleading", "unfair"},
+    "maintenance": {"bank", "deposited", "separate", "seventy"},
+    "penalties": {"penalty", "default"},
+}
 
-# ── LiteLLM fallback chain ─────────────────────────────────────────────────────
 
-FALLBACK_MODELS = [
-    settings.primary_model,
-    settings.fallback_model_2,
+# ── LiteLLM fallback chains ────────────────────────────────────────────────────
+# THINKING tier: deep-reasoning model (generator only)
+# FAST tier: lightweight models (classifier, validator, and other simple tasks)
+
+THINKING_MODELS = [
+    settings.primary_model,          # e.g. minimax-m2.7 (thinking)
     settings.fallback_model_1,
+    settings.fallback_model_2,
+    settings.fallback_model_3,
 ]
+
+FAST_MODELS = [
+    settings.fast_model,             # e.g. gemini-3.1-flash-lite
+    settings.fallback_model_1,
+    settings.fallback_model_2,
+    settings.fallback_model_3,
+]
+
+# Keep backward-compat alias for any external references
+FALLBACK_MODELS = THINKING_MODELS
 
 
 def turn_reset_node(state: CivicSetuState) -> dict:
@@ -50,36 +85,72 @@ def turn_reset_node(state: CivicSetuState) -> dict:
     }
 
 
-def _llm_call(prompt: str, system: str, temperature: float = 0.0) -> str:
+def _llm_call(prompt: str, system: str, temperature: float = 0.0, tier: str = "thinking") -> str:
     """
-    LiteLLM call with automatic fallback chain.
-    temperature=0.0 for all legal reasoning — determinism over creativity.
+    Call an LLM with fallback chain.
+
+    Args:
+        tier: "thinking" for deep-reasoning tasks (generator),
+              "fast" for lightweight tasks (classifier, validator).
     """
+    models = FAST_MODELS if tier == "fast" else THINKING_MODELS
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
     ]
     last_error = None
-    for model in FALLBACK_MODELS:
+    for model in models:
         start = time.perf_counter()
         try:
-            # Gemini 3.x models degrade below temperature=1.0
             effective_temp = 1.0 if "gemini-3" in model else temperature
             completion_kwargs = {
                 "model": model,
                 "messages": messages,
                 "temperature": effective_temp,
-                "max_tokens": 1024,
+                "max_tokens": 16384,
             }
+            # ── NVIDIA-hosted models (GLM4.7, Minimax) ───────────────
+            _nvidia_models = ("z-ai/glm4.7", "minimaxai/minimax-m2.7", "deepseek-ai/deepseek-v4-pro", "deepseek-ai/deepseek-v4-flash")
+            if any(nm in model for nm in _nvidia_models):
+                completion_kwargs["api_base"] = "https://integrate.api.nvidia.com/v1"
+                completion_kwargs["api_key"] = os.getenv("NVIDIA_API_KEY")
+
+            if "z-ai/glm4.7" in model:
+                completion_kwargs["temperature"] = 0.7
+                completion_kwargs["top_p"] = 0.95
+                completion_kwargs["max_tokens"] = 16384
+                completion_kwargs["response_format"] = {"type": "json_object"}
+                # Disable thinking mode for deterministic, fast responses
+                completion_kwargs["extra_body"] = {
+                    "chat_template_kwargs": {
+                        "enable_thinking": False,
+                        "clear_thinking": False,
+                    }
+                }
+            elif "minimaxai/minimax-m2.7" in model:
+                completion_kwargs["temperature"] = 0.7
+                completion_kwargs["top_p"] = 0.95
+                completion_kwargs["max_tokens"] = 16384
+            elif (
+                "deepseek-ai/deepseek-v4-pro" in model
+                or "deepseek-ai/deepseek-v4-flash" in model
+            ):
+                completion_kwargs["temperature"] = 0.7
+                completion_kwargs["top_p"] = 0.95
+                completion_kwargs["max_tokens"] = 16384
+                completion_kwargs["extra_body"] = {
+                    "chat_template_kwargs": {
+                        "thinking": False
+                    }
+                }
             if "osmapi.com" in os.environ.get("OPENAI_API_BASE", ""):
                 completion_kwargs["response_format"] = {"type": "json_object"}
-            response = litellm.completion(
-                **completion_kwargs,
-            )
+
+            response = litellm.completion(**completion_kwargs)
+
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
             content = response.choices[0].message.content
             if content is None:
-                # Qwen3 thinking models return output in reasoning_content, not content
                 content = getattr(response.choices[0].message, "reasoning_content", None) or ""
             content = content.strip()
             usage = getattr(response, "usage", None)
@@ -110,33 +181,46 @@ def _generator_tone_hint(query_type: QueryType | str | None) -> str:
         query_type = QueryType._value2member_map_.get(query_type)
 
     tone_hints = {
-        QueryType.FACT_LOOKUP: "Tone hint: Give a direct answer and include one helpful analogy.",
+        QueryType.FACT_LOOKUP: (
+            "Tone hint: Open with 1-2 sentences directly answering the exact question asked. "
+            "Do NOT use analogies, metaphors, or real-world comparisons. "
+            "Use only information present in the provided context. "
+            "Cite the section number at the end of each bullet point."
+        ),
         QueryType.PENALTY_LOOKUP: "Tone hint: Lead with the consequence, then explain why it applies.",
-        QueryType.CROSS_REFERENCE: "Tone hint: Explain the connection between sections as a narrative.",
+        QueryType.CROSS_REFERENCE: (
+            "Tone hint: Explain what the cited section says first. "
+            "Then describe how it connects to related sections shown in the context. "
+            "Only reference sections and jurisdictions that are present in the provided context blocks."
+        ),
         QueryType.CONFLICT_DETECTION: (
             "Tone hint: Explicitly flag the contradiction ONLY if BOTH sides appear in the "
             "provided context. If only one jurisdiction's rule is present, describe what you "
             "found and note the missing side. Never infer precedence from legal reasoning — "
             "only state precedence if the context explicitly says so."
         ),
-        QueryType.TEMPORAL: "Tone hint: Explain what changed, when, and why it matters.",
+        QueryType.TEMPORAL: (
+            "Tone hint: Lead with the specific time period or deadline. "
+            "Quote the exact numeric value from context (e.g. '30 days', '3 months'). "
+            "If the context does not contain a specific time value, say so explicitly."
+        ),
     }
     return tone_hints.get(query_type, tone_hints[QueryType.FACT_LOOKUP])
 
 
 def _extract_json_dict(raw: str) -> dict:
-    """
-    Extract first valid JSON object from model output.
-    Tolerates code fences and extra reasoning/prose around the payload.
-    """
     cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.removeprefix("```json").removeprefix("```").strip()
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3].strip()
+
+    # Strip <think>...</think> blocks (Qwen3, DeepSeek, Nemotron reasoning traces)
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL).strip()
+
+    # Strip markdown code fences (handles leading spaces, ```json, ``` variants)
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE).strip()
+    cleaned = re.sub(r"```\s*$", "", cleaned, flags=re.MULTILINE).strip()
 
     decoder = json.JSONDecoder()
 
+    # Try direct parse first
     try:
         parsed = decoder.decode(cleaned)
         if isinstance(parsed, dict):
@@ -144,6 +228,7 @@ def _extract_json_dict(raw: str) -> dict:
     except json.JSONDecodeError:
         pass
 
+    # Scan for first { and raw_decode from there
     for idx, char in enumerate(cleaned):
         if char != "{":
             continue
@@ -155,6 +240,129 @@ def _extract_json_dict(raw: str) -> dict:
             return parsed
 
     raise json.JSONDecodeError("No JSON object found", cleaned, 0)
+
+
+def _pinned_section_specs(
+    refs: list[str] | None,
+    jurisdiction: Jurisdiction | None,
+) -> list[tuple[str, Jurisdiction]]:
+    """
+    Convert eval/document refs such as "Section 6" and "Rule 7" to lookup specs.
+    Central Act sections live under CENTRAL; state rules live under the target state.
+    """
+    specs: list[tuple[str, Jurisdiction]] = []
+    target_jurisdiction = jurisdiction or Jurisdiction.CENTRAL
+    for ref in refs or []:
+        match = _PINNED_SECTION_RE.match(str(ref))
+        if not match:
+            continue
+        kind = (match.group(1) or "").lower()
+        section_id = match.group(2)
+        lookup_jurisdiction = (
+            Jurisdiction.CENTRAL
+            if kind in {"section", "sec.", "sec", "s.", "s"}
+            else target_jurisdiction
+        )
+        specs.append((section_id, lookup_jurisdiction))
+    return specs
+
+
+async def _fetch_pinned_sections(
+    refs: list[str] | None,
+    jurisdiction: Jurisdiction | None,
+    existing: list[RetrievedChunk],
+    hint: str = "",
+) -> list[RetrievedChunk]:
+    specs = _pinned_section_specs(refs, jurisdiction)
+    if not specs:
+        return []
+
+    from civicsetu.stores.relational_store import AsyncSessionLocal
+
+    seen = {str(c.chunk.chunk_id) for c in existing}
+    pinned: list[RetrievedChunk] = []
+    async with AsyncSessionLocal() as session:
+        for section_id, lookup_jurisdiction in specs:
+            family = await VectorStore.get_section_family(
+                session=session,
+                section_id=section_id,
+                jurisdiction=lookup_jurisdiction,
+            )
+            for fc in _sort_pinned_family(family, hint)[:6]:
+                cid = str(fc.chunk.chunk_id)
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                fc.is_pinned = True
+                fc.retrieval_source = "pinned"
+                pinned.append(fc)
+    return pinned
+
+
+def _sort_pinned_family(family: list[RetrievedChunk], hint: str) -> list[RetrievedChunk]:
+    if not hint:
+        return list(family)
+    terms = {
+        t.lower()
+        for t in re.findall(r"[A-Za-z][A-Za-z0-9]{3,}", hint)
+        if t.lower() not in _PIN_HINT_STOPWORDS
+    }
+    expanded_terms = set(terms)
+    for term in terms:
+        expanded_terms.update(_PIN_HINT_EXPANSIONS.get(term, set()))
+    terms = expanded_terms
+    if not terms:
+        return list(family)
+
+    def score(chunk: RetrievedChunk) -> tuple[int, int]:
+        haystack = f"{chunk.chunk.section_title} {chunk.chunk.text}".lower()
+        matches = sum(1 for term in terms if term in haystack)
+        is_base = 0 if "(" in str(chunk.chunk.section_id) else 1
+        return matches, is_base
+
+    return sorted(family, key=score, reverse=True)
+
+
+def _prepend_pinned_sections(state: CivicSetuState, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    pinned_refs = state.get("pinned_section_refs")
+    if not pinned_refs:
+        return chunks
+
+    jurisdiction = state.get("pinned_section_jurisdiction") or state.get("jurisdiction_filter")
+    hint = state.get("pinned_section_hint", "")
+    specs = _pinned_section_specs(pinned_refs, jurisdiction)
+    existing_matches: list[RetrievedChunk] = []
+    for section_id, lookup_jurisdiction in specs:
+        family_matches = [
+            c for c in chunks
+            if c.chunk.jurisdiction == lookup_jurisdiction
+            and (
+                str(c.chunk.section_id) == section_id
+                or str(c.chunk.section_id).startswith(f"{section_id}(")
+            )
+        ]
+        for c in _sort_pinned_family(family_matches, hint)[:6]:
+            if c not in existing_matches:
+                c.is_pinned = True
+                existing_matches.append(c)
+
+    pinned = asyncio.run(_fetch_pinned_sections(
+        pinned_refs,
+        jurisdiction,
+        chunks,
+        hint,
+    ))
+    promoted = existing_matches + pinned
+    if promoted:
+        promoted_ids = {str(c.chunk.chunk_id) for c in promoted}
+        rest = [c for c in chunks if str(c.chunk.chunk_id) not in promoted_ids]
+        log.info("pinned_section_refs_added", refs=pinned_refs, pinned=len(promoted))
+        return promoted + rest
+    if pinned:
+        log.info("pinned_section_refs_added", refs=pinned_refs, pinned=len(pinned))
+        return pinned + chunks
+    log.warning("pinned_section_refs_missing", refs=pinned_refs)
+    return chunks
 
 
 # ── Node 1: Classifier ─────────────────────────────────────────────────────────
@@ -184,7 +392,7 @@ def classifier_node(state: CivicSetuState) -> dict:
     )
 
     try:
-        raw = _llm_call(prompt, system)
+        raw = _llm_call(prompt, system, tier="fast")
         result = _extract_json_dict(raw)
 
         query_type_str = result.get("query_type", "fact_lookup")
@@ -234,6 +442,65 @@ def vector_retrieval_node(state: CivicSetuState) -> dict:
     chunks = asyncio.run(VectorRetriever.retrieve(query, query_embedding, top_k, jurisdiction))
     log.info("stage_timing", node="vector_retrieval", stage="postgres_retrieval",
              duration_ms=round((time.perf_counter() - retrieve_start) * 1000, 2))
+    # Fix 4: section-ID-aware direct lookup.
+    # Use original query when it has explicit sections, rewritten otherwise.
+    _orig = state.get("query", query)
+    _lookup_q = _orig if VectorRetriever._extract_query_section_ids(_orig) else query
+    section_ids = VectorRetriever._extract_query_section_ids(_lookup_q)
+    if section_ids:
+        from civicsetu.models.enums import Jurisdiction as JurEnum
+        from civicsetu.stores.relational_store import AsyncSessionLocal
+
+        async def _fetch_sections():
+            seen = {str(c.chunk.chunk_id) for c in chunks}
+            extra: list[RetrievedChunk] = []
+            async with AsyncSessionLocal() as session:
+                for sid in section_ids:
+                    jur = JurEnum(jurisdiction) if jurisdiction else None
+                    family = await VectorStore.get_section_family(
+                        session=session,
+                        section_id=sid,
+                        jurisdiction=jur or JurEnum.CENTRAL,
+                    )
+                    # Central Act sections (e.g. Section 7, 60) don't exist in state DB —
+                    # fall back to CENTRAL so penalty/fact queries still find them.
+                    if not family and jur and jur != JurEnum.CENTRAL:
+                        family = await VectorStore.get_section_family(
+                            session=session,
+                            section_id=sid,
+                            jurisdiction=JurEnum.CENTRAL,
+                        )
+                    for fc in family[:3]:
+                        cid = str(fc.chunk.chunk_id)
+                        if cid not in seen:
+                            seen.add(cid)
+                            fc.is_pinned = True
+                            extra.append(fc)
+            return extra
+
+        direct_chunks = asyncio.run(_fetch_sections())
+        if direct_chunks:
+            log.info("vector_section_direct_lookup",
+                     section_ids=list(section_ids),
+                     direct_chunks=len(direct_chunks))
+            chunks = direct_chunks + chunks
+
+    # For state jurisdictions, supplement with Central Act retrieval.
+    # State DBs lack Central Act sections (e.g. Section 7 revocation grounds,
+    # Section 5 timeline) — adding them ensures cross-Act context is available.
+    if jurisdiction and jurisdiction != Jurisdiction.CENTRAL:
+        central_start = time.perf_counter()
+        central_chunks = asyncio.run(VectorRetriever.retrieve(query, query_embedding, top_k, Jurisdiction.CENTRAL))
+        seen = {str(c.chunk.chunk_id) for c in chunks}
+        extra_central = [c for c in central_chunks if str(c.chunk.chunk_id) not in seen]
+        if extra_central:
+            log.info("vector_central_supplement",
+                     jurisdiction=jurisdiction, count=len(extra_central))
+            chunks = chunks + extra_central
+        log.info("stage_timing", node="vector_retrieval", stage="central_supplement",
+                 duration_ms=round((time.perf_counter() - central_start) * 1000, 2))
+
+    chunks = _prepend_pinned_sections(state, chunks)
     log.info("node_timing", node="vector_retrieval",
              duration_ms=round((time.perf_counter() - node_start) * 1000, 2), results=len(chunks))
     return {"retrieved_chunks": chunks}
@@ -280,6 +547,77 @@ def graph_retrieval_node(state: CivicSetuState) -> dict:
         log.info("stage_timing", node="graph_retrieval", stage="fallback_rrf_search", duration_ms=round((time.perf_counter() - fallback_start) * 1000, 2))
         log.info("graph_fallback_rrf_results", count=len(chunks))
 
+        # Second fallback: state jurisdiction had no indexed penalty/XREF sections —
+        # retry without jurisdiction filter to pick up Central Act chunks.
+        if not chunks and jurisdiction:
+            log.info("graph_retrieval_fallback_no_jurisdiction", query=query[:80])
+            chunks = asyncio.run(_rrf_retrieve(query, query_embedding, top_k, None))
+            log.info("graph_fallback_no_jurisdiction_results", count=len(chunks))
+    # Fix 5: section-ID-aware direct lookup in graph retrieval path.
+    # Use original query when it has explicit sections (XREF: "Section 18 refund")
+    # so classifier-injected cross-refs (e.g. "section 19 allottee rights") don't
+    # pin wrong sections. Fall back to rewritten query when original has none
+    # (temporal: classifier injects "section 5" via RULE 1 for retrieval).
+    from civicsetu.retrieval.vector_retriever import VectorRetriever as _VR
+    _original_query = state.get("query", query)
+    _lookup_query = _original_query if _VR._extract_query_section_ids(_original_query) else query
+    section_ids = _VR._extract_query_section_ids(_lookup_query)
+    if section_ids:
+        from civicsetu.models.enums import Jurisdiction as JurEnum
+        from civicsetu.stores.relational_store import AsyncSessionLocal
+
+        async def _fetch_sections_graph():
+            seen = {str(c.chunk.chunk_id) for c in chunks}
+            extra: list[RetrievedChunk] = []
+            async with AsyncSessionLocal() as session:
+                for sid in section_ids:
+                    jur = JurEnum(jurisdiction) if jurisdiction else JurEnum.CENTRAL
+                    family = await VectorStore.get_section_family(
+                        session=session,
+                        section_id=sid,
+                        jurisdiction=jur,
+                    )
+                    # Central Act sections (e.g. Section 59, 60) don't exist in state DB —
+                    # fall back to CENTRAL so penalty queries still find them.
+                    if not family and jur != JurEnum.CENTRAL:
+                        family = await VectorStore.get_section_family(
+                            session=session,
+                            section_id=sid,
+                            jurisdiction=JurEnum.CENTRAL,
+                        )
+                    for fc in family[:3]:
+                        cid = str(fc.chunk.chunk_id)
+                        if cid not in seen:
+                            seen.add(cid)
+                            fc.is_pinned = True
+                            extra.append(fc)
+            return extra
+
+        direct_chunks = asyncio.run(_fetch_sections_graph())
+        if direct_chunks:
+            log.info("graph_section_direct_lookup",
+                     section_ids=list(section_ids),
+                     direct_chunks=len(direct_chunks))
+            chunks = direct_chunks + chunks
+
+    # For state jurisdictions, supplement with Central Act retrieval.
+    # State DBs surface state-rule chunks (e.g. Karnataka Rule 5 withdrawal) when
+    # the query needs Central Act sections (e.g. Section 5 thirty-day deadline,
+    # Section 4 account maintenance) — CENTRAL fallback in _fetch_sections_graph
+    # only fires when the state family is EMPTY, missing this mismatch case.
+    if jurisdiction and jurisdiction != Jurisdiction.CENTRAL:
+        central_supplement_start = time.perf_counter()
+        _query_embedding = cached_embed(query)
+        central_chunks = asyncio.run(_VR.retrieve(query, _query_embedding, top_k, Jurisdiction.CENTRAL))
+        seen = {str(c.chunk.chunk_id) for c in chunks}
+        extra_central = [c for c in central_chunks if str(c.chunk.chunk_id) not in seen]
+        if extra_central:
+            log.info("graph_central_supplement", jurisdiction=str(jurisdiction), count=len(extra_central))
+            chunks = chunks + extra_central
+        log.info("stage_timing", node="graph_retrieval", stage="central_supplement",
+                 duration_ms=round((time.perf_counter() - central_supplement_start) * 1000, 2))
+
+    chunks = _prepend_pinned_sections(state, chunks)
     _MAX_GRAPH_CHUNKS = 25
     if len(chunks) > _MAX_GRAPH_CHUNKS:
         log.warning(
@@ -288,7 +626,7 @@ def graph_retrieval_node(state: CivicSetuState) -> dict:
             capped=_MAX_GRAPH_CHUNKS,
         )
         chunks = chunks[:_MAX_GRAPH_CHUNKS]
-        
+
     log.info("node_timing", node="graph_retrieval", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), results=len(chunks))
     return {"retrieved_chunks": chunks}
 
@@ -382,7 +720,8 @@ def generator_node(state: CivicSetuState) -> dict:
     system = (
         "You are CivicSetu, a plain-language guide to Indian RERA laws for homebuyers, builders, and agents. "
         "Your job is to explain what the law means in practice - not recite it. "
-        "Use simple language, real-world analogies, and short examples to make rules clear. "
+        "Use simple language and bullet points to make rules clear. "
+        "Every factual claim in your answer must be traceable to the numbered context blocks provided. "
         "After explaining, anchor each point to the specific section it comes from. "
         "Never invent provisions. "
         f"{tone_hint} "
@@ -399,12 +738,17 @@ def generator_node(state: CivicSetuState) -> dict:
     raw = ""
     try:
         llm_start = time.perf_counter()
-        raw = _llm_call(prompt, system, temperature=0.0)
+        log.info("generator_debug_start", query=query[:50], chunks=len(chunks), model=THINKING_MODELS[0])
+        raw = _llm_call(prompt, system, temperature=0.0, tier="thinking")
+        log.info("generator_debug_raw", raw_type=type(raw).__name__, raw_len=len(raw), raw_preview=raw[:200])
         log.info("stage_timing", node="generator", stage="llm", duration_ms=round((time.perf_counter() - llm_start) * 1000, 2))
         result = _extract_json_dict(raw)
 
-        answer = result.get("answer", "")
-        confidence = float(result.get("confidence_score", 0.5))
+        answer = result.get("answer") or result.get("response") or result.get("text") or ""
+        try:
+            confidence = float(result.get("confidence_score") or 0.5)
+        except (TypeError, ValueError):
+            confidence = 0.5
         amendment_notice = result.get("amendment_notice")
         conflict_warnings = result.get("conflict_warnings", [])
 
@@ -458,9 +802,10 @@ def generator_node(state: CivicSetuState) -> dict:
         )
 
     except (json.JSONDecodeError, KeyError, ValueError) as e:
-        log.warning("generator_parse_failed", error=str(e))
+        log.warning("generator_parse_failed", error=str(e), raw_preview=raw[:500])
         salvage_answer = raw.strip()
-        if salvage_answer and "{" not in salvage_answer:
+        # Salvage: if raw has content but JSON parse failed, return raw text as answer
+        if salvage_answer:
             seen: set[tuple[str, str]] = set()
             citations = []
             for rc in chunks:
@@ -478,13 +823,15 @@ def generator_node(state: CivicSetuState) -> dict:
                     ))
             answer = salvage_answer
             confidence = 0.3
+            conflict_warnings = []
+            amendment_notice = None
             log.warning("generator_parse_salvaged", citations=len(citations), answer_chars=len(answer))
         else:
             answer = "Unable to generate a structured response. Please try again."
             confidence = 0.0
             citations = []
-        conflict_warnings = []
-        amendment_notice = None
+            conflict_warnings = []
+            amendment_notice = None
 
     log.info("node_timing", node="generator", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), context_chunks=len(chunks))
     return {
@@ -538,37 +885,54 @@ def hybrid_retrieval_node(state: CivicSetuState) -> dict:
     log.info("stage_timing", node="hybrid_retrieval", stage="embedding", duration_ms=round((time.perf_counter() - embed_start) * 1000, 2))
 
     async def _retrieve():
-        # _rrf_retrieve opens its own session; graph uses Neo4j — safe to gather
-        vector_task = _rrf_retrieve(query, query_embedding, top_k, jurisdiction)
-        graph_task = GraphRetriever.retrieve(
-            query=query,
-            jurisdiction=jurisdiction,
-            depth=2,
-        )
-        vector_chunks, graph_chunks = await asyncio.gather(
-            vector_task, graph_task, return_exceptions=True
-        )
+        tasks = [
+            _rrf_retrieve(query, query_embedding, top_k, jurisdiction),
+            GraphRetriever.retrieve(query=query, jurisdiction=jurisdiction, depth=2),
+        ]
+        # For state jurisdictions, retrieve Central Act in parallel.
+        # CONF queries compare state rules against Central Act — both sides needed.
+        if jurisdiction and jurisdiction != Jurisdiction.CENTRAL:
+            tasks.append(_rrf_retrieve(query, query_embedding, top_k, Jurisdiction.CENTRAL))
 
-        v_chunks = vector_chunks if not isinstance(vector_chunks, Exception) else []
-        g_chunks = graph_chunks if not isinstance(graph_chunks, Exception) else []
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        if isinstance(vector_chunks, Exception):
-            log.warning("hybrid_vector_failed", error=str(vector_chunks))
-        if isinstance(graph_chunks, Exception):
-            log.warning("hybrid_graph_failed", error=str(graph_chunks))
+        v_chunks = results[0] if not isinstance(results[0], Exception) else []
+        g_chunks = results[1] if not isinstance(results[1], Exception) else []
+        c_chunks = results[2] if len(results) > 2 and not isinstance(results[2], Exception) else []
 
-        return v_chunks, g_chunks
+        if isinstance(results[0], Exception):
+            log.warning("hybrid_vector_failed", error=str(results[0]))
+        if isinstance(results[1], Exception):
+            log.warning("hybrid_graph_failed", error=str(results[1]))
+
+        # Graph traversal crosses all jurisdictions via DERIVED_FROM edges.
+        # Filter to keep only target jurisdiction + Central to prevent
+        # contamination from unrelated state rules (MH, UP, TN chunks in a KA query).
+        if jurisdiction:
+            g_filtered = [
+                c for c in g_chunks
+                if c.chunk.jurisdiction in (jurisdiction, Jurisdiction.CENTRAL)
+            ]
+            g_chunks = g_filtered if g_filtered else g_chunks
+
+        # Dedup Central supplement against already-collected chunks
+        seen = {str(c.chunk.chunk_id) for c in v_chunks + g_chunks}
+        extra_central = [c for c in c_chunks if str(c.chunk.chunk_id) not in seen]
+
+        return v_chunks, g_chunks, extra_central
 
     retrieve_start = time.perf_counter()
-    v_chunks, g_chunks = asyncio.run(_retrieve())
+    v_chunks, g_chunks, extra_central = asyncio.run(_retrieve())
     log.info("stage_timing", node="hybrid_retrieval", stage="vector_graph_parallel", duration_ms=round((time.perf_counter() - retrieve_start) * 1000, 2))
 
+    all_chunks = v_chunks + g_chunks + extra_central
+    all_chunks = _prepend_pinned_sections(state, all_chunks)
     log.info(
         "hybrid_retrieval_complete",
         vector_chunks=len(v_chunks),
         graph_chunks=len(g_chunks),
-        total=len(v_chunks) + len(g_chunks),
+        central_supplement=len(extra_central),
+        total=len(all_chunks),
     )
-    log.info("node_timing", node="hybrid_retrieval", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), total=len(v_chunks) + len(g_chunks))
-    # Return both — reranker deduplicates by chunk_id
-    return {"retrieved_chunks": v_chunks + g_chunks}
+    log.info("node_timing", node="hybrid_retrieval", duration_ms=round((time.perf_counter() - node_start) * 1000, 2), total=len(all_chunks))
+    return {"retrieved_chunks": all_chunks}

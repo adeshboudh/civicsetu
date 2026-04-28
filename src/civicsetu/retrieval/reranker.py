@@ -63,7 +63,7 @@ class Reranker:
 
         log.info("reranker_dedup", unique_chunks=len(unique_chunks))
 
-        pinned = [c for c in unique_chunks if c.is_pinned][:2]
+        pinned = [c for c in unique_chunks if c.is_pinned][:7]
         rankable = [c for c in unique_chunks if not c.is_pinned]
 
         try:
@@ -95,10 +95,10 @@ class Reranker:
                 gap=settings.reranker_score_gap,
             )
 
-            slots = max(0, 5 - len(pinned))
+            slots = max(0, 7 - len(pinned))
             return pinned + gap_filtered[:slots]
 
         except Exception as e:
             log.warning("reranker_failed", error=str(e), fallback="vector_order")
-            slots = max(0, 5 - len(pinned))
+            slots = max(0, 7 - len(pinned))
             return pinned + rankable[:slots]

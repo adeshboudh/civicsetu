@@ -212,21 +212,28 @@ class VectorStore:
         where_clause = f"WHERE {' AND '.join(filters)} AND" if filters else "WHERE"
 
         stmt = text(f"""
-            SELECT
-                chunk_id, doc_id, jurisdiction, doc_type, doc_name,
-                section_id, section_title, section_hierarchy,
-                text, effective_date, superseded_by, status,
-                source_url, page_number,
-                ts_rank(
-                    to_tsvector('english', COALESCE(section_title, '') || ' ' || text),
-                    websearch_to_tsquery('english', :query)
-                ) AS fts_score
-            FROM legal_chunks
-            {where_clause}
-                to_tsvector('english', COALESCE(section_title, '') || ' ' || text)
-                @@ websearch_to_tsquery('english', :query)
-            ORDER BY fts_score DESC
-            LIMIT :top_k
+        SELECT
+        chunk_id, doc_id, jurisdiction, doc_type, doc_name,
+        section_id, section_title, section_hierarchy,
+        text, effective_date, superseded_by, status,
+        source_url, page_number,
+        ts_rank(
+        to_tsvector('english',
+            COALESCE(section_id, '') || ' ' ||
+            COALESCE(section_title, '') || ' ' ||
+            text
+        ),
+        websearch_to_tsquery('english', :query)
+        ) AS fts_score
+        FROM legal_chunks
+        {where_clause}
+        to_tsvector('english',
+            COALESCE(section_id, '') || ' ' ||
+            COALESCE(section_title, '') || ' ' ||
+            text
+        ) @@ websearch_to_tsquery('english', :query)
+        ORDER BY fts_score DESC
+        LIMIT :top_k
         """)
 
         result = await session.execute(stmt, params)
@@ -283,23 +290,24 @@ class VectorStore:
         jurisdiction: Jurisdiction,
     ) -> list[RetrievedChunk]:
         import re
-        if re.search(r'\(', section_id):
-            return []
+        # Strip sub-section suffix so "11(13)" -> "11", "19(3)" -> "19"
+        # This allows callers to pass either a base or sub-section ID.
+        base_sid = re.sub(r'\([^)]*\)$', '', section_id).strip()
 
         result = await session.execute(
             text("""
-                SELECT
-                    chunk_id, doc_id, jurisdiction, doc_type, doc_name,
-                    section_id, section_title, section_hierarchy,
-                    text, effective_date, superseded_by, status,
-                    source_url, page_number
-                FROM legal_chunks
-                WHERE jurisdiction = :jur
-                AND (section_id = :sid OR section_id LIKE :pattern)
-                AND status = 'active'
-                ORDER BY section_id
+            SELECT
+            chunk_id, doc_id, jurisdiction, doc_type, doc_name,
+            section_id, section_title, section_hierarchy,
+            text, effective_date, superseded_by, status,
+            source_url, page_number
+            FROM legal_chunks
+            WHERE jurisdiction = :jur
+            AND (section_id = :sid OR section_id LIKE :pattern)
+            AND status = 'active'
+            ORDER BY section_id
             """),
-            {"jur": jurisdiction.value, "sid": section_id, "pattern": f"{section_id}(%"},
+            {"jur": jurisdiction.value, "sid": base_sid, "pattern": f"{base_sid}(%"},
         )
         rows = result.fetchall()
         return [

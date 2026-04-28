@@ -15,8 +15,8 @@ def test_reranker_settings_defaults():
     from civicsetu.config.settings import Settings
     s = Settings()
     assert s.reranker_model == "rank-T5-flan"
-    assert s.reranker_score_threshold == 0.1
-    assert s.reranker_score_gap == 0.6
+    assert s.reranker_score_threshold == 0.05
+    assert s.reranker_score_gap == 0.3
 
 
 def test_reranker_settings_env_override(monkeypatch):
@@ -67,7 +67,7 @@ def test_reranker_pinned_chunks_always_first():
     assert reranked[0].chunk.section_id == "18"
 
 
-def test_reranker_max_two_pinned():
+def test_reranker_keeps_pinned_chunks_up_to_context_limit():
     from civicsetu.agent.nodes import reranker_node
 
     pinned_chunks = [_make_rc(section_id=str(i), is_pinned=True) for i in range(4)]
@@ -84,7 +84,7 @@ def test_reranker_max_two_pinned():
         result = reranker_node(state)
 
     pinned_in_result = [c for c in result["reranked_chunks"] if c.is_pinned]
-    assert len(pinned_in_result) <= 2
+    assert len(pinned_in_result) == 4
 
 
 def test_reranker_deduplicates_by_chunk_id():
@@ -111,6 +111,112 @@ def test_reranker_deduplicates_by_chunk_id():
 
 
 # ── generator_node — citation anchoring ───────────────────────────────────────
+
+def test_eval_pinned_section_refs_are_fetched_by_expected_jurisdiction():
+    from civicsetu.agent.nodes import _pinned_section_specs
+    from civicsetu.models.enums import Jurisdiction
+
+    specs = _pinned_section_specs(
+        ["Section 6", "Rule 7", "62"],
+        Jurisdiction.KARNATAKA,
+    )
+
+    assert specs == [
+        ("6", Jurisdiction.CENTRAL),
+        ("7", Jurisdiction.KARNATAKA),
+        ("62", Jurisdiction.KARNATAKA),
+    ]
+
+
+def test_pin_relevance_prefers_ground_truth_terms():
+    from civicsetu.agent.nodes import _sort_pinned_family
+
+    intro = _make_rc(section_id="7", is_pinned=True)
+    intro.chunk.text = "7. Revocation of registration after satisfaction by the Authority."
+    grounds = _make_rc(section_id="7(2)", is_pinned=True)
+    grounds.chunk.text = "the promoter makes default in doing anything required under this Act"
+    notice = _make_rc(section_id="7(9)", is_pinned=True)
+    notice.chunk.text = "thirty days notice in writing stating the grounds for revocation"
+    unfair = _make_rc(section_id="7(4)", is_pinned=True)
+    unfair.chunk.text = "the promoter is involved in unfair practice or irregularities"
+
+    ranked = _sort_pinned_family(
+        [intro, grounds, notice, unfair],
+        "promoter does not comply fraudulent practices thirty days notice grounds",
+    )
+
+    assert [c.chunk.section_id for c in ranked[:3]] == ["7(9)", "7(2)", "7(4)"]
+
+
+def test_pin_relevance_prefers_specific_subclauses_over_base_header_on_tie():
+    from civicsetu.agent.nodes import _sort_pinned_family
+
+    header = _make_rc(section_id="7", is_pinned=True)
+    header.chunk.text = "Revocation of registration."
+    penalty = _make_rc(section_id="7(6)", is_pinned=True)
+    penalty.chunk.text = "the promoter violates section 38 or fails to pay any penalty imposed"
+
+    ranked = _sort_pinned_family(
+        [header, penalty],
+        "grounds for revocation penalties imposed",
+    )
+
+    assert [c.chunk.section_id for c in ranked] == ["7(6)", "7"]
+
+
+def test_prepend_pinned_sections_promotes_existing_matches(monkeypatch):
+    from civicsetu.agent.nodes import _prepend_pinned_sections
+    from civicsetu.models.enums import Jurisdiction
+
+    noisy = _make_rc(section_id="4(10)", jurisdiction=Jurisdiction.KARNATAKA)
+    rule_5 = _make_rc(section_id="5", jurisdiction=Jurisdiction.KARNATAKA)
+    section_4 = _make_rc(section_id="4(14)", jurisdiction=Jurisdiction.CENTRAL)
+
+    def fake_run(coro):
+        coro.close()
+        return []
+
+    monkeypatch.setattr("civicsetu.agent.nodes.asyncio.run", fake_run)
+
+    result = _prepend_pinned_sections(
+        {
+            "pinned_section_refs": ["Rule 5", "Section 4"],
+            "pinned_section_jurisdiction": Jurisdiction.KARNATAKA,
+            "pinned_section_hint": "separate bank account seventy per cent",
+        },
+        [noisy, rule_5, section_4],
+    )
+
+    assert [c.chunk.section_id for c in result] == ["5", "4(14)", "4(10)"]
+    assert result[0].is_pinned is True
+    assert result[1].is_pinned is True
+
+
+def test_reranker_node_trims_eval_context_to_pinned_families():
+    from civicsetu.agent.nodes import reranker_node
+    from civicsetu.models.enums import Jurisdiction
+
+    matched_rule = _make_rc(section_id="5", jurisdiction=Jurisdiction.KARNATAKA, is_pinned=True)
+    matched_section = _make_rc(section_id="4(14)", jurisdiction=Jurisdiction.CENTRAL, is_pinned=True)
+    noisy_central = _make_rc(section_id="4(10)", jurisdiction=Jurisdiction.CENTRAL)
+    noisy_state = _make_rc(section_id="3", jurisdiction=Jurisdiction.UTTAR_PRADESH)
+
+    with patch(
+        "civicsetu.retrieval.reranker.Reranker.rerank",
+        return_value=[matched_rule, matched_section, noisy_central, noisy_state],
+    ):
+        result = reranker_node(
+            _base_state(
+                query="Which Karnataka rule implements project account maintenance?",
+                rewritten_query="Which Karnataka rule implements project account maintenance?",
+                retrieved_chunks=[matched_rule, matched_section, noisy_central, noisy_state],
+                pinned_section_refs=["Rule 5", "Section 4"],
+                pinned_section_jurisdiction=Jurisdiction.KARNATAKA,
+            )
+        )
+
+    assert [c.chunk.section_id for c in result["reranked_chunks"]] == ["5", "4(14)"]
+
 
 def _llm_response(**kwargs) -> str:
     payload = {
@@ -188,9 +294,9 @@ def test_generator_handles_malformed_llm_json():
     with patch("civicsetu.agent.nodes._llm_call", return_value="not json {{{{"):
         state = _base_state(reranked_chunks=chunks)
         result = generator_node(state)
-
-    assert result["confidence_score"] == 0.0
-    assert result["citations"] == []
+    # Salvage path: non-empty malformed text is returned as answer with 0.3 confidence
+    assert result["confidence_score"] == 0.3
+    assert len(result["citations"]) == 1  # salvage cites all provided chunks
 
 
 def test_generator_salvages_plain_text_when_json_missing():
@@ -272,9 +378,35 @@ def test_llm_call_does_not_force_no_reasoning_for_osmapi(monkeypatch):
     fake_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
     fake_response.usage = None
 
-    with patch("civicsetu.agent.nodes.litellm.completion", return_value=fake_response) as completion:
-        nodes_mod._llm_call("prompt", "system")
+    original_models = nodes_mod.THINKING_MODELS[:]
+    nodes_mod.THINKING_MODELS[:] = ["openai/gpt-4o-mini"]
 
+    with patch("civicsetu.agent.nodes.litellm.completion", return_value=fake_response) as completion:
+        try:
+            nodes_mod._llm_call("prompt", "system")
+        finally:
+            nodes_mod.THINKING_MODELS[:] = original_models
+
+    assert "extra_body" not in completion.call_args.kwargs
+
+
+def test_llm_call_does_not_attach_deepseek_kwargs_to_non_deepseek_models():
+    import civicsetu.agent.nodes as nodes_mod
+
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+    fake_response.usage = None
+
+    original_models = nodes_mod.THINKING_MODELS[:]
+    nodes_mod.THINKING_MODELS[:] = ["groq/llama-3.3-70b-versatile"]
+
+    with patch("civicsetu.agent.nodes.litellm.completion", return_value=fake_response) as completion:
+        try:
+            nodes_mod._llm_call("prompt", "system", tier="thinking")
+        finally:
+            nodes_mod.THINKING_MODELS[:] = original_models
+
+    assert completion.call_args.kwargs["model"] == "groq/llama-3.3-70b-versatile"
     assert "extra_body" not in completion.call_args.kwargs
 
 
@@ -321,11 +453,11 @@ def test_generator_system_prompt_uses_plain_language_persona():
 @pytest.mark.parametrize(
     ("query_type", "expected_hint"),
     [
-        ("fact_lookup", "Give a direct answer and include one helpful analogy."),
+        ("fact_lookup", "Open with 1-2 sentences directly answering the exact question asked"),
         ("penalty_lookup", "Lead with the consequence"),
-        ("cross_reference", "connection between sections as a narrative"),
+        ("cross_reference", "Explain what the cited section says first"),
         ("conflict_detection", "Explicitly flag the contradiction"),
-        ("temporal", "Explain what changed, when, and why it matters."),
+        ("temporal", "Lead with the specific time period or deadline"),
     ],
 )
 def test_generator_system_prompt_includes_query_type_tone_hint(query_type, expected_hint):

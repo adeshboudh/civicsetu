@@ -16,8 +16,8 @@ pinned: false
 Open-source RAG system for querying Indian civic and legal documents — with accurate
 citations, cross-reference traversal, and conflict detection between laws.
 
-**Current status:** Phase 6 complete — 5-jurisdiction RERA coverage (Central + MH + UP + KA + TN),
-cross-jurisdiction graph edges live, 12/12 E2E passing, Next.js frontend deployed on Vercel.
+**Current status:** Phase 8 complete — 5-jurisdiction RERA coverage (Central + MH + UP + KA + TN),
+RAGAS evaluation pipeline live, hybrid RRF retrieval, Next.js frontend deployed on Vercel.
 
 ---
 
@@ -57,7 +57,7 @@ Three stores per query:
 - **Neo4j** — section graph traversal (cross-references, DERIVED_FROM edges)
 - **PostgreSQL** — full chunk text + metadata
 
-Full design: [HLD.md](docs/HLD.md) | [LLD.md](docs/LLD.md)
+Full design: [HLD.md](docs/HLD.md) | [LLD.md](docs/LLD.md) | [RAG.md](docs/RAG.md)
 
 ---
 
@@ -122,6 +122,13 @@ make test       # Run unit tests
 make lint       # Ruff linter
 make typecheck  # mypy
 
+# RAGAS evaluation
+make eval-smoke-p1   # Phase 1: invoke graph for 5-row smoke dataset
+make eval-smoke-p2   # Phase 2: score cached results with RAGAS
+make eval-p1         # Phase 1: full 31-row golden dataset
+make eval-p2         # Phase 2: score all 31 rows
+make eval-reset      # Clear eval caches (re-runs everything)
+
 make ingest --jurisdiction MAHARASHTRA  # Re-ingest a single jurisdiction
 make docker-down                        # Tear down containers
 ```
@@ -152,11 +159,13 @@ Graph: 2090 Section nodes, 1297 HAS_SECTION edges, 933 REFERENCES edges, 91 DERI
 | API | FastAPI + Uvicorn |
 | Orchestration | LangGraph StateGraph |
 | LLM routing | LiteLLM (Gemini → Groq → OpenRouter) |
-| Embeddings | nomic-embed-text-v1.5 via sentence-transformers (local) |
+| Embeddings | nomic-embed-text-v1.5 via sentence-transformers (local, no Ollama required) |
 | Vector DB | pgvector + HNSW index |
 | Graph DB | Neo4j Community |
 | Relational | PostgreSQL + SQLAlchemy |
-| Reranker | FlashRank (ms-marco-MiniLM-L-12-v2) |
+| Retrieval | Hybrid RRF: pgvector cosine + PostgreSQL FTS (websearch_to_tsquery OR-mode) |
+| Reranker | FlashRank (rank-T5-flan) + score gap filter |
+| Evaluation | RAGAS (faithfulness, answer relevancy, context precision) |
 | PDF parsing | PyMuPDF |
 
 
@@ -174,12 +183,14 @@ Graph: 2090 Section nodes, 1297 HAS_SECTION edges, 933 REFERENCES edges, 91 DERI
 | 5 | Agent pipeline hardening, E2E test suite | ✅ Complete |
 | 6 | Next.js frontend, Vercel deployment, public URL | ✅ Complete |
 | 7 | Graph explorer, section content drawer, D3 visualization | ✅ Complete |
+| 8 | RAGAS eval pipeline, hybrid RRF retrieval, retrieval quality fixes | ✅ Complete |
 
 
 ---
 
 ## ADRs
 
+- [RAG Techniques Reference](docs/RAG.md) — hybrid retrieval, RRF, reranking, RAGAS eval, known failure modes
 - [ADR 001 — three store architecture](docs/adr/001-three-store-architecture.md)
 - [ADR 002 — section boundary chunking](docs/adr/002-section-boundary-chunking.md)
 - [ADR 003 — LangGraph over LangChain chains](docs/adr/003-langgraph-over-langchain.md)

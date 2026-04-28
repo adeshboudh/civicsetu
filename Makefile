@@ -26,7 +26,7 @@ help:
 	@echo "    make test         Run unit test suite"
 	@echo "    make test-cov     Run tests with coverage report"
 	@echo "    make e2e          Run 12-case E2E query benchmark"
-	@echo "    make eval              Full eval — both phases, default RAG LLMs + neysa judge"
+	@echo "    make eval              Full eval — both phases, default RAG LLMs + Groq judge"
 	@echo "    make eval-p1           Phase 1 only: graph invocation → eval_phase1_results.json"
 	@echo "    make eval-p2           Phase 2 only: RAGAS scoring from cached phase 1"
 	@echo "    make eval-smoke        5-row smoke test — both phases"
@@ -35,7 +35,8 @@ help:
 	@echo "    make eval-large        Full eval with osmapi qwen3.5-397b graph model"
 	@echo "    make eval-reset        Delete phase 1 cache to force fresh graph invocation"
 	@echo ""
-	@echo "    Judge model override:  make eval-p2 JUDGE_MODEL=gemma-4-31b-it"
+	@echo "    Judge override:        make eval-p2 JUDGE_PROVIDER=gemini JUDGE_MODEL=gemini/gemini-2.5-flash-lite"
+	@echo "    Judge override:        make eval-p2 JUDGE_PROVIDER=osmapi JUDGE_MODEL=qwen3.5-397b-a17b"
 	@echo "    Graph model override:  make eval-p1 EVAL_PRIMARY_MODEL=neysa/qwen3.5-122b-a10b"
 	@echo ""
 	@echo "    make clean        Remove __pycache__ and .pyc files"
@@ -77,15 +78,19 @@ e2e:
 # ── Eval ──────────────────────────────────────────────────────────────────────
 # Phase 1 uses default RAG app LLMs from .env (gemini-2.5-flash-lite chain).
 # Override graph model:  make eval-p1 EVAL_PRIMARY_MODEL=qwen3.5-122b-a10b
-# Override judge model (osmapi):  make eval-p2 JUDGE_MODEL=gemma-4-31b-it
-# Override judge model (Gemini):  make eval-p2 JUDGE_MODEL=gemini/gemini-2.5-flash-lite
-#   Gemini judge uses GEMINI_API_KEY_2 for both LLM and embeddings.
-#   osmapi judge uses OSMAPI_API_KEY for LLM, GEMINI_API_KEY_2 for embeddings.
-JUDGE_MODEL ?= gemini/gemini-2.5-flash-lite
+# Default judge comes from scripts/run_eval.py / .env.
+# Override judge provider/model:
+#   make eval-p2 JUDGE_PROVIDER=gemini JUDGE_MODEL=gemini/gemini-2.5-flash-lite
+#   make eval-p2 JUDGE_PROVIDER=osmapi JUDGE_MODEL=qwen3.5-397b-a17b
+#   make eval-p2 JUDGE_PROVIDER=groq JUDGE_MODEL=llama-3.3-70b-versatile
+# Gemini judge uses GEMINI_API_KEY_2 for both LLM and embeddings.
+# Groq judge uses GROQ_API_KEY_2 (or GROQ_API_KEY / JUDGE_GROQ_API_KEY) for LLM, GEMINI_API_KEY_2 for embeddings.
+# osmapi judge uses OSMAPI_API_KEY for LLM, GEMINI_API_KEY_2 for embeddings.
+MAKE_JUDGE_ENV = $(if $(JUDGE_PROVIDER),JUDGE_PROVIDER=$(JUDGE_PROVIDER) )$(if $(JUDGE_MODEL),JUDGE_MODEL=$(JUDGE_MODEL) )
 
 # Full eval — both phases
 eval:
-	PYTHONUTF8=1 JUDGE_MODEL=$(JUDGE_MODEL) uv run python scripts/run_eval.py
+	PYTHONUTF8=1 $(MAKE_JUDGE_ENV)uv run python scripts/run_eval.py
 
 # Phase 1 only — graph invocation, saves to eval_phase1_results.json
 eval-p1:
@@ -94,22 +99,22 @@ eval-p1:
 # Phase 2 only — RAGAS scoring from cached phase 1
 eval-p2:
 	@test -f eval_phase1_results.json || (echo "ERROR: eval_phase1_results.json not found — run 'make eval-p1' first" && exit 1)
-	PYTHONUTF8=1 EVAL_PHASE=2 JUDGE_MODEL=$(JUDGE_MODEL) uv run python scripts/run_eval.py
+	PYTHONUTF8=1 EVAL_PHASE=2 $(MAKE_JUDGE_ENV)uv run python scripts/run_eval.py
 
 # 5-row smoke tests
 eval-smoke:
-	PYTHONUTF8=1 EVAL_LIMIT=5 JUDGE_MODEL=$(JUDGE_MODEL) uv run python scripts/run_eval.py
+	PYTHONUTF8=1 EVAL_LIMIT=5 $(MAKE_JUDGE_ENV)uv run python scripts/run_eval.py
 
 eval-smoke-p1:
 	PYTHONUTF8=1 EVAL_PHASE=1 EVAL_LIMIT=5 uv run python scripts/run_eval.py
 
 eval-smoke-p2:
 	@test -f eval_phase1_results.json || (echo "ERROR: eval_phase1_results.json not found — run 'make eval-smoke-p1' first" && exit 1)
-	PYTHONUTF8=1 EVAL_PHASE=2 EVAL_LIMIT=5 JUDGE_MODEL=$(JUDGE_MODEL) uv run python scripts/run_eval.py
+	PYTHONUTF8=1 EVAL_PHASE=2 EVAL_LIMIT=5 $(MAKE_JUDGE_ENV)uv run python scripts/run_eval.py
 
 # Large graph model via osmapi
 eval-large:
-	PYTHONUTF8=1 EVAL_PRIMARY_MODEL=qwen3.5-397b-a17b JUDGE_MODEL=$(JUDGE_MODEL) uv run python scripts/run_eval.py
+	PYTHONUTF8=1 EVAL_PRIMARY_MODEL=qwen3.5-397b-a17b $(MAKE_JUDGE_ENV)uv run python scripts/run_eval.py
 
 eval-reset:
 	rm -f eval_phase1_results.json

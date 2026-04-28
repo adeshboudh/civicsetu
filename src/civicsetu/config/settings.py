@@ -17,10 +17,14 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
     openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
 
     # LLM Routing
     primary_model: str = Field(
-        default="gemini/gemini-2.5-flash-lite", alias="PRIMARY_MODEL"
+        default="gemini/gemini-3.1-flash-lite-preview", alias="PRIMARY_MODEL"
+    )
+    fast_model: str = Field(
+        default="gemini/gemini-3.1-flash-lite-preview", alias="FAST_MODEL"
     )
     fallback_model_1: str = Field(
         default="groq/llama-3.3-70b-versatile", alias="FALLBACK_MODEL_1"
@@ -44,9 +48,9 @@ class Settings(BaseSettings):
     hf_token: str = Field(default="", alias="HF_TOKEN")
 
     # Reranker
-    reranker_model: str = Field(default="rank-T5-flan", alias="RERANKER_MODEL")
-    reranker_score_threshold: float = Field(default=0.1, alias="RERANKER_SCORE_THRESHOLD")
-    reranker_score_gap: float = Field(default=0.6, alias="RERANKER_SCORE_GAP")
+    reranker_model: str = Field(default="ms-marco-MiniLM-L-12-v2", alias="RERANKER_MODEL")
+    reranker_score_threshold: float = Field(default=0.05, alias="RERANKER_SCORE_THRESHOLD")
+    reranker_score_gap: float = Field(default=0.95, alias="RERANKER_SCORE_GAP")
 
     # PostgreSQL
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")

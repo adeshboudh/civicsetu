@@ -41,6 +41,30 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     log.info("civicsetu_starting", env=settings.api_env)
 
+    # Determine and log the primary model's masked API key
+    model_name = settings.primary_model
+    api_key_to_log = "UNKNOWN"
+    provider = "Unknown"
+    
+    if model_name.startswith("gemini/"):
+        api_key_to_log = settings.gemini_api_key
+        provider = "Gemini"
+    elif model_name.startswith("groq/"):
+        api_key_to_log = settings.groq_api_key
+        provider = "Groq"
+    elif model_name.startswith("openrouter/"):
+        api_key_to_log = settings.openrouter_api_key
+        provider = "OpenRouter"
+    elif model_name.startswith("openai/"):
+        api_key_to_log = settings.nvidia_api_key
+        provider = "NVIDIA"
+        
+    masked_key = "NOT_SET_OR_TOO_SHORT"
+    if api_key_to_log and len(api_key_to_log) > 8:
+        masked_key = f"{api_key_to_log[:4]}...{api_key_to_log[-4:]}"
+
+    log.info("primary_model_api_key", provider=provider, model=model_name, api_key_masked=masked_key)
+
     from civicsetu.agent.graph import get_compiled_graph
 
     async with create_checkpointer() as checkpointer:
@@ -57,7 +81,7 @@ async def lifespan(app: FastAPI):
             "embedding_model_warmed",
             duration_ms=round((time.perf_counter() - warm_start) * 1000, 2),
         )
-        from civicsetu.agent.nodes import _get_ranker
+        from civicsetu.retrieval.reranker import _get_ranker
 
         ranker_start = time.perf_counter()
         await asyncio.to_thread(_get_ranker)
