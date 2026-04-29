@@ -117,27 +117,6 @@ def create_app() -> FastAPI:
     app.include_router(query.router, prefix="/api/v1", tags=["query"])
     app.include_router(graph.router, prefix="/api/v1", tags=["graph"])
 
-    # Serve static frontend files
-    import os
-    from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
-
-    frontend_path = os.path.join(os.getcwd(), "frontend/out")
-    if os.path.exists(frontend_path):
-        app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
-        
-        @app.get("/{full_path:path}")
-        async def serve_frontend(full_path: str):
-            # Fallback to index.html for client-side routing if file not found
-            file_path = os.path.join(frontend_path, full_path)
-            if not os.path.isfile(file_path):
-                return FileResponse(os.path.join(frontend_path, "index.html"))
-            return FileResponse(file_path)
-    else:
-        @app.get("/")
-        async def root():
-            return {"message": "CivicSetu API is running. Frontend not found.", "status": "ok"}
-
     return app
 
 app = create_app()

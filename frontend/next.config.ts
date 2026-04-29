@@ -1,12 +1,14 @@
 import type { NextConfig } from 'next';
 
+const backendUrl = process.env.BACKEND_URL ?? 'http://localhost:8000';
+
 const nextConfig: NextConfig = {
-  output: 'export',
-  images: {
-    unoptimized: true,
+  async rewrites() {
+    return [
+      { source: '/api/:path*', destination: `${backendUrl}/api/:path*` },
+      { source: '/health', destination: `${backendUrl}/health` },
+    ];
   },
-  // We remove rewrites because they don't work with output: 'export'
-  // The frontend will now call the API relatively or via NEXT_PUBLIC_BACKEND_URL
 };
 
 export default nextConfig;
