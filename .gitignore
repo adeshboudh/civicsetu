@@ -65,3 +65,5 @@ frontend/yarn-error.log*
 # RAGAS evaluation output
 eval_phase1_results.json
 eval_results.json
+
+api_usecase.md

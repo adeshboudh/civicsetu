@@ -1,635 +1,569 @@
-# CivicSetu — RAG Techniques Reference
+# CivicSetu - RAG Techniques Reference
 
-**Version:** 2.0 — Phase 8 (RAGAS Evaluation)
-**Last Updated:** April 2026
+**Version:** 2.1 - Streaming + Eval Refresh  
+**Last Updated:** 2026-04-29
 
-This document covers every retrieval-augmented generation technique used in CivicSetu,
-why each decision was made, and what it costs when it goes wrong.
-
----
-
-## 1. System Overview
-
-CivicSetu is a **legal domain RAG system** over five Indian RERA jurisdictions.
-The core challenge: legal text is highly structured (section numbers, cross-references,
-state vs central hierarchy) and users ask imprecise plain-English questions that need
-precise legal citations. Standard RAG fails here because:
-
-- Dense embeddings miss entity distinctions ("promoter" vs "agent" look similar at 768 dims)
-- Query strings rarely contain the exact legal keywords in the source text
-- Single-source retrieval misses the two-law comparison needed for conflict queries
-- Generator LLMs "fill in the gaps" with legal reasoning not present in context
-
-Every technique below addresses one of these failure modes.
+This document describes the retrieval-augmented generation stack currently used in CivicSetu, what is live in the app today, and where the weak spots still are.
 
 ---
 
-## 2. Ingestion Pipeline
+## 1. Current Status Snapshot
 
-### 2.1 PDF Parsing
+As of **2026-04-29**, CivicSetu's RAG app is usable end-to-end, but still under retrieval and latency tuning.
 
-`ingestion/parser.py` uses **PyMuPDF** for text extraction. Key guards:
-- `max_pages` per document — UP Rules truncate at page 24 (pages 25–52 are government forms),
-  Tamil Nadu at page 15 (pages 16–101 are Forms A–O)
-- Scanned page detection — Karnataka's official PDF is a 19MB image scan; NAREDCO mirror used instead
-- `total_pages` in metadata reflects the capped count, not the PDF total
-
-### 2.2 Section Boundary Chunking
-
-`ingestion/chunker.py` applies **six regex patterns** in priority order. First match per line wins.
-
-| # | Pattern | Example | Jurisdiction |
-|---|---|---|---|
-| 1 | `\n{id}.\n{title}` | `\n3.\nRegistration` | MahaRERA |
-| 2 | `{id}. {title}.—` | `3. Registration.—` | MahaRERA |
-| 3 | `Rule {id} - {title}` | `Rule 3 - Application` | Generic |
-| 4 | `{id}. {title}.–` | `3. Application.–` | Karnataka, Tamil Nadu |
-| 5 | `{id}-(1)\n{title}` | `3-(1)\nApplication` | UP RERA (multi-clause) |
-| 6 | `{id}-\n{title}` | `3-\nApplication` | UP RERA (single-clause) |
-
-`DocType.ACT` uses a separate pattern set. Fallback: paragraph split on double newlines,
-logged as `fallback_paragraph_chunking`.
-
-**Chunk size limits:**
-
-```
-MIN_CHARS = 100    — discard page headers, footnotes, empty sections
-MAX_CHARS = 1500   — split large sections at subsection markers
-```
-
-**Large section splitting priority:**
-1. Subsection markers: `\n\s*\((?:\d+|[a-z]{1,3})\)\s+`
-2. Sentence boundary near MAX_CHARS: `rfind('. ')`
-3. Hard cut at MAX_CHARS (last resort, logs a warning)
-
-Sub-chunks get IDs like `"11(1)"`, `"11(2)"` — the base section becomes `"11"`.
-
-### 2.3 Deterministic Chunk IDs
-
-`chunk_id` is a **UUID5 hash** of `(doc_id, section_id, chunk_index)`. This makes
-re-ingestion idempotent — the same section always gets the same UUID, so `ON CONFLICT DO UPDATE`
-replaces rather than duplicates. Earlier versions used random UUIDs; re-ingest doubled the corpus.
-
-### 2.4 Section Title Prepended to Embeddings
-
-`ingestion/pipeline.py` prepends `section_title` to the text before embedding:
-
-```python
-texts = [
-    f"{c['section_title']}\n{c['text']}" if c.get('section_title') else c['text']
-    for c in raw_chunks
-]
-```
-
-**Why:** Sub-chunks (e.g. `S.11(2)`, `S.11(3)`) split off from a parent section carry
-the body text but lose the section header. Without prepending, a query for
-"obligations of promoter" cannot match sub-chunks of Section 11 via cosine similarity
-because the phrase "obligations of promoter" never appears in their raw text.
-After prepending, every sub-chunk embeds: `"Obligations of promoter\n[sub-clause text]"`.
-
-Note: the **reranker** still receives raw `chunk.text` (without the title prefix),
-so it scores on the actual legal text content.
-
-### 2.5 Embedding Model
-
-**Model:** `nomic-embed-text-v1.5` via `sentence-transformers` (local, no Ollama required)
-**Dimension:** 768
-**Asymmetric prefixes** (MTEB/nomic-embed requirement):
-
-```
-Ingestion:  "search_document: {section_title}\n{text}"
-Query:      "search_query: {rewritten_query}"
-```
-
-Using the wrong prefix at query time causes ~10–15% recall degradation.
-
-**Truncation guard:**
-```python
-MAX_EMBED_CHARS = 4000   # ~1000 tokens
-text = text[:MAX_EMBED_CHARS]   # BEFORE adding prefix
-prefixed = f"search_document: {text.strip()}"
-```
+- **Live app routes**
+  - `POST /api/v1/query` - buffered response
+  - `POST /api/v1/query/stream` - SSE token streaming
+  - `POST /api/v1/query/section-context` - section-focused chat
+  - `/api/v1/graph/*` - graph explorer and section drill-down
+- **Session-aware graph**
+  - LangGraph uses `session_id` as thread key.
+  - Each turn clears retrieval/generation fields but preserves conversation history.
+- **Active retrieval routing**
+  - `fact_lookup -> vector_retrieval`
+  - `cross_reference|penalty_lookup|temporal -> graph_retrieval`
+  - `conflict_detection -> hybrid_retrieval`
+- **Streaming is now first-class**
+  - streaming path reuses classifier, retrieval, and reranker
+  - answer text streams first
+  - citations and metadata are extracted in a second fast pass
+- **Latest eval artifact improved a lot over old smoke baseline**
+  - `eval_results.json` dated **2026-04-28**
+  - `faithfulness=0.900`
+  - `answer_relevancy=0.858`
+  - `context_precision=0.696`
+  - `pass_rate=0.581`
+- **Main remaining weakness**
+  - multi-jurisdiction retrieval still weak
+  - `MULTI` rows pass only `20%`
+  - common `fact_lookup` traffic is still less reliable than penalty or graph-heavy queries
 
 ---
 
-## 3. Query Pipeline
+## 2. System Overview
 
-### 3.1 Query Classification and Rewriting
+CivicSetu is a legal-domain RAG system over five Indian RERA jurisdictions plus cross-jurisdiction queries.
 
-`agent/nodes.py::classifier_node` calls an LLM with `CLASSIFIER_PROMPT` to produce:
+Core problem:
+
+- legal text is structured around sections, rules, sub-clauses, and cross-references
+- users ask imprecise natural-language questions
+- answers must stay grounded and cite the right legal section
+
+Why plain semantic RAG fails here:
+
+- embeddings blur important legal entities
+- user queries often omit exact statute wording
+- conflict questions need more than one legal source
+- generation models tend to fill gaps unless grounding is strict
+
+---
+
+## 3. Ingestion Pipeline
+
+### 3.1 PDF Parsing
+
+`ingestion/parser.py` uses **PyMuPDF**.
+
+Important guards:
+
+- document-level `max_pages` trims form-heavy tails
+- scanned PDF detection avoids unusable OCR-free sources
+- metadata stores capped page count, not necessarily total PDF pages
+
+### 3.2 Section Boundary Chunking
+
+`ingestion/chunker.py` applies multiple regex families in priority order to detect section and rule boundaries.
+
+Current purpose:
+
+- preserve citation boundaries
+- keep section hierarchy intact
+- split oversized sections without destroying legal structure
+
+Fallback mode is paragraph chunking on double newlines, logged as `fallback_paragraph_chunking`.
+
+### 3.3 Deterministic Chunk IDs
+
+`chunk_id` is a UUID5 over stable section identity data.
+
+Effect:
+
+- re-ingestion is idempotent
+- `ON CONFLICT DO UPDATE` replaces old chunk content
+- same legal section does not duplicate across re-runs
+
+### 3.4 Section Title Prepended to Embeddings
+
+During embedding, section title is prepended to chunk text.
+
+Reason:
+
+- split sub-sections often lose the title phrase that users actually search for
+- title prefix restores semantic recall for questions like "obligations of promoter"
+
+Reranker still reads raw chunk text, not the prefixed text.
+
+### 3.5 Embedding Model
+
+Current defaults from `config/settings.py`:
+
+- `embedding_model = nomic-embed-text`
+- `embedding_dimension = 768`
+
+Query and document embeddings use asymmetric prefixes compatible with Nomic-style retrieval.
+
+---
+
+## 4. Query Pipeline
+
+### 4.1 Query Classification and Rewriting
+
+`agent/nodes.py::classifier_node` classifies query and rewrites it for retrieval.
+
+Output shape:
 
 ```json
 {
   "query_type": "fact_lookup | cross_reference | temporal | penalty_lookup | conflict_detection",
-  "rewritten_query": "expanded query for better retrieval"
+  "rewritten_query": "expanded retrieval-friendly query"
 }
 ```
 
-**Classification rules (first match wins):**
+Current route mapping:
 
-| Type | Trigger | Retrieval Route |
-|---|---|---|
-| `conflict_detection` | Keywords: conflict, contradict, inconsistent, override, vs | `hybrid_retrieval` |
-| `penalty_lookup` | Fine, jail, imprisonment, consequences | `graph_retrieval` |
-| `temporal` | Timeline, deadline, days, months, period, within, stage-wise | `graph_retrieval` |
-| `cross_reference` | Explicit section number ("Section 18", "Rule 3") | `graph_retrieval` |
-| `fact_lookup` | Everything else | `vector_retrieval` |
+| Query Type | Route |
+|---|---|
+| `fact_lookup` | `vector_retrieval` |
+| `cross_reference` | `graph_retrieval` |
+| `penalty_lookup` | `graph_retrieval` |
+| `temporal` | `graph_retrieval` |
+| `conflict_detection` | `hybrid_retrieval` |
 
-**Query rewriting** expands the query to include legal keywords that appear in source text.
-Key use case: temporal queries. "What is the timeline for project registration?" becomes
-`"grant or reject registration within thirty days deemed registered period"` — now FTS
-can match Section 5 which uses exactly those words.
+Classifier fallback: if JSON parse fails, default to `fact_lookup` with original query.
 
-**Fallback:** if classifier fails to parse JSON, defaults to `fact_lookup` with original query.
+### 4.2 LLM Routing and Fallback Chain
 
-### 3.2 LLM Routing and Fallback Chain
+All non-streaming LLM calls use `_llm_call()`. Streaming uses `_llm_stream()`.
 
-All LLM calls go through `_llm_call()` which tries models in order:
+Current model chain:
 
+```text
+THINKING tier
+1. gemini/gemini-3.1-flash-lite-preview
+2. groq/llama-3.3-70b-versatile
+3. openrouter/meta-llama/llama-3.3-70b-instruct:free
+4. openrouter/qwen/qwen3.6-plus:free
+
+FAST tier
+1. gemini/gemini-3.1-flash-lite-preview
 ```
-1. gemini/gemini-2.5-flash-lite   (Gemini API, GEMINI_API_KEY)
-2. openrouter/meta-llama/llama-3.3-70b-instruct:free  (OpenRouter, OPENROUTER_API_KEY)
-3. groq/llama-3.3-70b-versatile   (Groq, GROQ_API_KEY)
-```
 
-**Gemini temperature quirk:** Gemini 3.x models degrade below `temperature=1.0`. The
-fallback chain auto-sets `effective_temp = 1.0 if "gemini-3" in model else 0.0`.
+Provider notes:
 
-All legal reasoning uses `temperature=0.0` — determinism over creativity.
+- non-NVIDIA models go through LiteLLM
+- NVIDIA-backed models use `ChatNVIDIA` directly
+- generator and metadata extraction use `temperature=0.0`
+- fast-tier tasks use the lighter chain
 
 ---
 
-## 4. Hybrid Retrieval — `_rrf_retrieve()`
+## 5. Hybrid Retrieval
 
-The core retrieval function is `_rrf_retrieve()` (shared across all retrieval nodes).
-It combines **three retrieval signals** into one ranked list:
+Hybrid retrieval combines vector similarity and PostgreSQL full-text search, then expands section families.
 
-### 4.1 Vector Similarity Search
+### 5.1 Vector Similarity Search
 
-```python
-vector_results = await VectorStore.similarity_search(
-    query_embedding=embed_query(rewritten_query),
-    top_k=top_k * 3,    # fetch 3× to give RRF enough candidates
-    jurisdiction=filter
-)
-```
+Used to catch semantic matches when wording differs from statute text.
 
-**Index:** HNSW with cosine similarity on 768-dim vectors.
-**Strengths:** Catches semantic matches — "penalties for building without approval" matches
-"consequence of non-registration" even without keyword overlap.
-**Weakness:** Embeddings for sub-clauses of large sections lose their section context.
-Fixed by section title prepending during ingestion (§2.4).
+Strength:
 
-### 4.2 Full-Text Search (PostgreSQL `tsvector`)
+- good for paraphrase and plain-English phrasing
 
-```python
-fts_results = await VectorStore.full_text_search(
-    query=rewritten_query,
-    top_k=top_k * 2,
-    jurisdiction=filter
-)
-```
+Weakness:
 
-**Query operator:** `websearch_to_tsquery` in OR mode — each word becomes an independent
-FTS term. Changed from `plainto_tsquery` (AND-mode) because legal queries contain
-both relevant and irrelevant words; AND-mode required all words to match, excluding
-relevant sections that only matched most words.
+- can still over-focus on one jurisdiction or sub-clause family
 
-**Strengths:** Exact entity matches — "Section 59" or "promoter" finds the right chunks
-even when semantic similarity is ambiguous.
-**Weakness:** Misses synonyms, paraphrased text, and queries whose words don't appear
-verbatim in the legal text.
+### 5.2 Full-Text Search
 
-### 4.3 Reciprocal Rank Fusion (RRF)
+Used for exact legal wording, section numbers, and important terms.
 
-`_rrf_merge()` merges vector and FTS results:
+Strength:
 
-```python
-RRF_K = 60   # standard constant — higher = smoother blending
+- precise keyword and section hits
 
-rrf_score(chunk) = 1/(K + rank_in_vector) + 1/(K + rank_in_fts)
-```
+Weakness:
 
-Chunks appearing in **both** result sets score highest (both terms add). A chunk at
-rank 1 in vector but absent from FTS scores `1/(60+1) ≈ 0.016`. A chunk at rank 3
-in both scores `1/63 + 1/63 ≈ 0.032` — higher than vector-only rank 1.
+- misses paraphrases and concept-only questions
 
-**Effect:** Sections that both semantically match AND contain the right legal keywords
-float to the top. Pure vector or pure FTS results that lack overlap with the other
-signal drop naturally.
+### 5.3 Reciprocal Rank Fusion
 
-### 4.4 Section Family Expansion
+Vector and FTS results are merged with RRF so chunks that rank well in both signals rise to the top.
 
-After RRF merge, the top-3 results trigger **family expansion**:
+### 5.4 Section Family Expansion
 
-```python
-for rc in merged[:3]:
-    sid = rc.chunk.section_id         # e.g. "5(4)"
-    base_sid = re.sub(r'\([^)]*\)$', '', sid).strip()  # → "5"
-    for expand_sid in {sid, base_sid}:
-        family = await VectorStore.get_section_family(
-            section_id=expand_sid, jurisdiction=jur
-        )
-        # adds parent section + all sibling sub-sections
-```
+Top merged sections expand to include parent and sibling sub-sections.
 
-`get_section_family` queries: `section_id = '5'` OR `section_id LIKE '5(%'` — returns
-the base section plus all sub-sections (`5(1)`, `5(2)`, `5(3)`, `5(4)`, `5(5)`).
+Purpose:
 
-**Guard:** if `section_id` already contains `(`, expansion is skipped to avoid double-expanding
-sub-sections. The code strips the parenthetical suffix first (`"5(4)"` → `"5"`) before calling
-expansion, so sub-sections found by RRF still trigger their parent section's family.
-
-**Why this matters:** Large sections (S.11 "Obligations of promoter") are split into 10+
-sub-chunks. If only `S.11(3)` appears in the RRF top-10, family expansion pulls in
-`S.11` (main), `S.11(1)`, `S.11(2)` etc. — the full context the generator needs.
-
-**Cap:** `_MAX_VECTOR_EXPANDED = 40` — prevents excessive reranker load.
+- restore surrounding legal context for split sections
+- prevent generator from seeing one isolated sub-clause only
 
 ---
 
-## 5. Graph-Based Retrieval
+## 6. Graph-Based Retrieval
 
-Used for `cross_reference`, `penalty_lookup`, `temporal` query types.
+Used for section-centric questions and legal relationships.
 
-### 5.1 Section ID Extraction
+Current behavior:
 
-```python
-section_pattern = re.compile(r'\b(?:section|sec\.?|s\.)\s*(\d+[A-Z]?)\b', re.IGNORECASE)
-rule_pattern    = re.compile(r'\bRule\s+(\d+[A-Z]?)\b', re.IGNORECASE)
-```
+- extract section or rule IDs from query
+- traverse Neo4j relationships such as `REFERENCES` and `DERIVED_FROM`
+- hydrate matching sections back from Postgres
 
-If no section ID found in query, falls back to `_rrf_retrieve()` (hybrid retrieval).
+Graph retrieval is especially important for:
 
-### 5.2 Neo4j Traversal
+- explicit section lookups
+- penalty questions
+- temporal questions
+- central vs state derivation paths
 
-For each detected section ID, across all relevant jurisdictions:
-
-```
-1. Source section chunks        — exact section_id match → is_pinned=True
-2. REFERENCES outgoing          — sections the source cites (depth=2)
-3. REFERENCES incoming          — sections that cite the source
-4. DERIVED_FROM outgoing        — Act sections this State Rule derives from
-5. DERIVED_FROM incoming        — State Rule sections implementing this Act section
-```
-
-**DERIVED_FROM** is the cross-jurisdiction link. When user asks about Maharashtra Rule 3,
-traversal follows `DERIVED_FROM` to RERA Act Section 4 — so both jurisdictions appear
-in context without needing to explicitly mention both.
-
-### 5.3 Pinning Rule
-
-Exact `section_id` matches get `is_pinned=True`. Pinned chunks are prepended to
-reranker output — they bypass score-based ordering. This prevents a highly relevant
-source section from being demoted if the cross-encoder scores some related section higher.
+Pinned chunks stay ahead of reranked chunks so exact requested sections do not get buried.
 
 ---
 
-## 6. Reranking
+## 7. Reranking
 
-### 6.1 FlashRank Cross-Encoder
+### 7.1 Cross-Encoder
 
-`retrieval/reranker.py` uses **FlashRank** with `rank-T5-flan`:
+`retrieval/reranker.py` uses FlashRank with current default:
 
-```python
-from flashrank import Ranker, RerankRequest
-ranker = Ranker(model_name="rank-T5-flan", cache_dir=".cache/flashrank")
+- `reranker_model = ms-marco-MiniLM-L-12-v2`
 
-passages = [{"text": c.chunk.text} for c in non_pinned]
-request = RerankRequest(query=state["query"], passages=passages)
-results = ranker.rerank(request)
-```
+Pipeline:
 
-The cross-encoder reads the **query** and **chunk text** together in a single forward pass,
-producing a relevance score (0.0–1.0). This is far more accurate than cosine similarity
-but ~10× slower — hence the `_MAX_VECTOR_EXPANDED=40` cap upstream.
+1. deduplicate by `(section_id, doc_name)`
+2. split pinned vs rankable chunks
+3. rerank rankable chunks with cross-encoder
+4. filter by minimum score
+5. apply score-gap cutoff
+6. prepend pinned chunks
 
-**Inputs:** raw `chunk.text` — NOT the section-title-prefixed version used at embedding time.
-The title prefix is for embedding quality; the cross-encoder scores on the actual legal text.
+### 7.2 Current Thresholds
 
-### 6.2 Score Gap Filter — `_apply_score_gap()`
+Current defaults:
 
-```python
-def _apply_score_gap(chunks, gap=0.6):
-    """Drop chunks after the first score cliff ≥ gap."""
-    for i in range(1, len(chunks)):
-        if chunks[i - 1].rerank_score - chunks[i].rerank_score >= gap:
-            return chunks[:i]
-    return chunks
-```
+- `reranker_score_threshold = 0.05`
+- `reranker_score_gap = 0.95`
 
-**Purpose:** Stop including chunks once there is a large quality drop. A top chunk at
-score 0.98 followed by a chunk at 0.30 represents a genuine relevance cliff — the 0.30
-chunk is noise, not context.
+These are intentionally recall-friendly compared to older stricter settings.
 
-**Threshold values:**
-- `reranker_score_threshold = 0.1` — minimum score to enter candidate pool (filters near-zero)
-- `reranker_score_gap = 0.6` — cliff threshold
+### 7.3 Final Context Assembly
 
-**Tuning history:** Original values were `threshold=0.3, gap=0.35`. The gap of 0.35
-was too aggressive — a chunk scoring 0.52 after one scoring 0.88 was cut (gap=0.36 ≥ 0.35),
-leaving only 1 context chunk for the generator. Increasing to 0.6 keeps reasonable
-secondary chunks while still cutting genuine noise.
+Current max context size is **7 chunks**.
 
-### 6.3 Final Context Assembly
+Assembly rule:
 
-```python
-slots_for_ranked = max(0, 5 - len(pinned))
-reranked = pinned + gap_filtered[:slots_for_ranked]
-```
-
-Maximum 5 context chunks: pinned first, then reranker-scored chunks. This is the input
-to the generator prompt as numbered blocks `[1]`, `[2]`, ..., `[5]`.
+- pinned chunks first
+- then top reranked chunks until 7 total
 
 ---
 
-## 7. Generation
+## 8. Generation
 
-### 7.1 Generator Prompt Structure
+### 8.1 Buffered Generation
 
-`prompts/generator.py` — the generator is instructed to:
+`generator_node()` builds a numbered context block and asks the model for JSON output:
 
-1. Open with plain-English summary (1–3 sentences, no jargon)
-2. Bulleted key points using only information from provided context
-3. Note connections, contradictions, exceptions
-4. Close with section references
-
-**Output schema:**
 ```json
 {
   "answer": "<markdown>",
-  "confidence_score": 0.0-1.0,
+  "confidence_score": 0.0,
   "cited_chunks": [1, 3],
   "amendment_notice": null,
   "conflict_warnings": []
 }
 ```
 
-### 7.2 Grounding Rules
+If parsing fails but raw text exists, answer text is salvaged and citations fall back to all visible chunks.
 
-Critical rules that prevent hallucination on sparse contexts:
+### 8.2 Streaming Generation
 
-- **Only use context** — never external legal knowledge or training data
-- **Sparse context handling** — if context lacks the answer, say "Based on the available context: [X]" and explicitly note "The context does not contain sufficient information to determine [Y]"
-- **Conflict detection grounding** — only assert a conflict exists if BOTH conflicting provisions appear in the context. If only one side is present: "The context contains [jurisdiction X's position] but does not include [jurisdiction Y's position] to confirm or deny a conflict"
-- **No invented citations** — never invent section numbers, legal provisions, or figures not in context
-- **Confidence calibration** — if `cited_chunks` is empty, `confidence_score` must be < 0.3
+`stream_generator_node()` now drives SSE output.
 
-### 7.3 Tone Hints per Query Type
+Flow:
 
-Each query type receives a tone instruction injected into the generator system prompt:
+1. run classifier, retrieval, reranker
+2. stream plain-text answer tokens to client
+3. run a second fast metadata extraction prompt
+4. map `cited_chunks` indices back to real citations
 
-| Type | Tone hint |
+Why split answer and metadata:
+
+- keeps first-token latency lower
+- avoids forcing model to stream valid JSON
+- still preserves grounded citations in final event
+
+### 8.3 Tone Hints by Query Type
+
+Current tone shaping:
+
+| Type | Current Hint |
 |---|---|
-| `fact_lookup` | Give a direct answer and include one helpful analogy |
-| `penalty_lookup` | Lead with the consequence, then explain why it applies |
-| `cross_reference` | Explain the connection between sections as a narrative |
-| `conflict_detection` | Only flag contradiction if BOTH sides appear in context; never infer precedence |
-| `temporal` | Explain what changed, when, and why it matters |
+| `fact_lookup` | direct answer, no analogies or metaphors |
+| `penalty_lookup` | lead with consequence |
+| `cross_reference` | explain cited section first, then linked sections present in context |
+| `conflict_detection` | only claim conflict if both sides are present |
+| `temporal` | lead with exact time value if present, otherwise say it is missing |
 
-### 7.4 Citation Extraction
+### 8.4 Citation Extraction
 
-The generator returns 1-based indices (`cited_chunks: [1, 3]`) into the numbered context
-blocks. The agent extracts `CivicSetuResponse.citations` from only those positions —
-not all retrieved chunks. This ensures citations are grounded in what the LLM actually read.
+Both buffered and streaming generators anchor citations from 1-based `cited_chunks` indices.
 
----
+Effect:
 
-## 8. Validation
-
-### 8.1 Validator Node
-
-`nodes.py::validator_node` sends the answer back to an LLM with the same numbered context
-blocks the generator used, asking:
-
-- Is each claim in the answer supported by the provided context?
-- Confidence score: 0.0–1.0
-- `hallucination_flag`: True if any claim is not grounded
-
-**Context format matters:** The validator must receive context in the same `[N] doc — section: title\ntext`
-format the generator used. Early versions passed raw `chunk.text` — the validator couldn't
-match "Section 11(1)" claims to source chunks that never contained "Section 11(1)" in their text,
-causing spurious `hallucination=True` flags and retry loops.
-
-### 8.2 Retry Logic
-
-```
-confidence >= 0.5 AND not hallucinated → END
-(confidence < 0.5 OR hallucinated) AND retry_count < 2 → retry → classifier
-retry_count >= 2 → END (low confidence answer)
-```
-
-Max 2 retries. On retry, the classifier runs again with the original query — a different
-model in the fallback chain may produce a better rewrite.
-
-### 8.3 Output Guardrails
-
-`guardrails/output_guard.py`:
-- Confidence floor: 0.30 — below this threshold, returns `InsufficientInfoResponse`
-- Disclaimer injection: always appended to every response
-- PII check not repeated (done at input)
+- citations reflect chunks actually used by generator
+- not every retrieved chunk becomes a citation
 
 ---
 
-## 9. RAGAS Evaluation Pipeline
+## 9. Validation
 
-### 9.1 Architecture — Two-Phase with Caching
+### 9.1 Current Validator Design
 
-Phase 1 (slow, ~2–3 min): invoke the RAG graph for every query → save to `eval_phase1_results.json`
-Phase 2 (fast, ~1 min): score cached results with RAGAS → save to `eval_results.json`
+Current validator is lightweight and **not** an LLM verifier.
 
-This separation allows iterating on RAGAS scoring (prompt changes, judge model changes)
-without re-invoking the full RAG pipeline. Phase 1 cache is invalidated manually via `make eval-reset`.
+`validator_node()` currently:
+
+- returns early if answer or chunks are missing
+- treats `confidence_score < 0.2` as a hallucination risk signal
+- otherwise preserves generator confidence
+
+This is cheaper and faster than second-pass validation, but weaker as a grounding guarantee.
+
+### 9.2 Retry Logic
+
+Current retry rule:
+
+```text
+no reranked chunks -> end
+confidence < 0.2 and retry_count < 2 -> retry
+otherwise -> end
+```
+
+Max retries: **2**
+
+Consequence:
+
+- avoids excessive cost
+- surfaces more low-confidence answers instead of repeatedly re-running graph
+
+### 9.3 Output Guardrails
+
+`guardrails/output_guard.py` still does final shaping:
+
+- below confidence floor, return `InsufficientInfoResponse`
+- always append disclaimer
+- input guard handles safety/PII before graph execution
+
+---
+
+## 10. RAGAS Evaluation Pipeline
+
+### 10.1 Two-Phase Architecture
+
+Evaluation is checkpointed into two phases:
+
+- **Phase 1:** invoke graph -> `eval_phase1_results.json`
+- **Phase 2:** score with RAGAS -> `eval_results.json`
+
+Important current behavior:
+
+- phase 1 resumes from valid cached rows
+- phase 2 resumes from already scored rows
+- failures do not require restarting from row 1
+
+### 10.2 Dataset
+
+`eval/golden_dataset.jsonl` currently has **31 rows** across:
+
+- `CENTRAL`
+- `MAHARASHTRA`
+- `UTTAR_PRADESH`
+- `KARNATAKA`
+- `TAMIL_NADU`
+- `MULTI`
+
+Each row includes:
+
+- `query`
+- `query_type`
+- `ground_truth`
+- `expected_section_ids`
+
+### 10.3 Judge Providers
+
+Current supported judge providers:
 
 ```bash
-make eval-smoke-p1   # Phase 1: run graph for 5-row smoke dataset
-make eval-smoke-p2   # Phase 2: score the 5 cached rows
-make eval-reset      # Clear both caches (re-runs everything)
-make eval-p1         # Phase 1: full 31-row golden dataset
-make eval-p2         # Phase 2: score all 31 rows
+JUDGE_PROVIDER=groq       JUDGE_MODEL=llama-3.3-70b-versatile
+JUDGE_PROVIDER=gemini     JUDGE_MODEL=gemini/gemma-4-31b-it
+JUDGE_PROVIDER=openrouter JUDGE_MODEL=meta-llama/llama-3.3-70b-instruct
+JUDGE_PROVIDER=osmapi     JUDGE_MODEL=qwen3.5-397b-a17b
+JUDGE_PROVIDER=nvidia     JUDGE_MODEL=z-ai/glm4.7
 ```
 
-### 9.2 Golden Dataset
+Current rate-limit controls:
 
-`eval/golden_dataset.jsonl` — 31 rows across 5 jurisdictions and all 5 query types.
+- `PHASE2_DELAY_SEC=20`
+- `PHASE2_MAX_RETRIES=4`
+- retry delay parsed from provider errors when available
 
-Each row:
-```json
-{
-  "id": "CENTRAL-FACT-001",
-  "jurisdiction": "CENTRAL",
-  "query_type": "fact_lookup",
-  "query": "What are the obligations of a promoter under RERA?",
-  "ground_truth": "Under Section 11...",
-  "expected_section_ids": ["Section 11", "Section 4"],
-  "tags": ["promoter", "obligations"]
-}
+### 10.4 Judge Input Trimming
+
+Current defaults:
+
+```text
+RAGAS_MAX_CONTEXTS = 7
+RAGAS_CONTEXT_CHAR_LIMIT = 1200
+RAGAS_ANSWER_CHAR_LIMIT = 1500
+RAGAS_REFERENCE_CHAR_LIMIT = 600
 ```
 
-**Coverage:**
+### 10.5 Latest Full Eval Results
 
-| Jurisdiction | fact | xref | temporal | penalty | conflict | Total |
-|---|---|---|---|---|---|---|
-| CENTRAL | 2 | 1 | 1 | 1 | 1 | 6 |
-| MAHARASHTRA | 1 | 1 | 1 | 1 | 1 | 5 |
-| UTTAR_PRADESH | 1 | 1 | 1 | 1 | 1 | 5 |
-| KARNATAKA | 1 | 1 | 1 | 1 | 1 | 5 |
-| TAMIL_NADU | 1 | 1 | 1 | 1 | 1 | 5 |
-| MULTI (null jur) | 1 | 1 | 1 | 1 | 1 | 5 |
-| **Total** | | | | | | **31** |
+Source: `eval_results.json` generated on **2026-04-28**
 
-### 9.3 RAGAS Metrics
+Run config captured in artifact:
 
-Three metrics computed per row:
+- graph model: `openai/z-ai/glm4.7`
+- judge model: `qwen3.5-397b-a17b`
+- pass threshold: `0.7`
 
-**Faithfulness** — are all claims in the answer grounded in the retrieved contexts?
-```
-faithfulness = (claims supported by context) / (total claims in answer)
-```
-Score 1.0 = fully grounded. Score 0.0 = complete hallucination.
+Overall:
 
-**Answer Relevancy** — does the answer actually address the question?
-```
-answer_relevancy = similarity(answer, question) averaged over generated question variants
-```
-RAGAS generates N paraphrased questions from the answer, embeds them, and measures cosine
-similarity to the original question. High score = answer stays on topic.
+| Metric | Value |
+|---|---|
+| Faithfulness | `0.900` |
+| Answer Relevancy | `0.858` |
+| Context Precision | `0.696` |
+| Pass Rate | `0.581` |
+| P50 Latency | `101,853.7 ms` |
+| P90 Latency | `161,085.2 ms` |
 
-**Context Precision** — are the retrieved contexts ranked in order of usefulness?
-```
-context_precision = precision@k averaged over ranks
-```
-Each context is scored by a judge LLM: "Is this context useful for answering the question
-given the ground truth?" Contexts marked useful at rank 1 weight higher than rank 3.
-A precision of 0.0 means none of the retrieved contexts were useful — retrieval failure.
+By query type:
 
-### 9.4 Judge LLM
+| Query Type | Faithfulness | Relevancy | Precision | Pass Rate |
+|---|---|---|---|---|
+| `penalty_lookup` | `0.866` | `0.873` | `1.000` | `1.000` |
+| `temporal` | `0.965` | `0.841` | `0.713` | `0.500` |
+| `cross_reference` | `0.894` | `0.796` | `0.736` | `0.500` |
+| `conflict_detection` | `0.899` | `0.911` | `0.551` | `0.500` |
+| `fact_lookup` | `0.880` | `0.865` | `0.513` | `0.429` |
 
-RAGAS uses an LLM judge for faithfulness and context precision verdicts. Supported providers:
+By jurisdiction:
 
-```bash
-JUDGE_PROVIDER=groq   JUDGE_MODEL=llama-3.3-70b-versatile  # default
-JUDGE_PROVIDER=gemini JUDGE_MODEL=gemini/gemma-4-31b-it
-JUDGE_PROVIDER=osmapi JUDGE_MODEL=qwen3.5-397b-a17b
-```
+| Jurisdiction | Faithfulness | Relevancy | Precision | Pass Rate |
+|---|---|---|---|---|
+| `TAMIL_NADU` | `0.978` | `0.900` | `0.747` | `0.800` |
+| `KARNATAKA` | `0.907` | `0.847` | `0.851` | `0.800` |
+| `UTTAR_PRADESH` | `0.978` | `0.904` | `0.600` | `0.600` |
+| `MAHARASHTRA` | `0.834` | `0.879` | `0.702` | `0.600` |
+| `CENTRAL` | `0.933` | `0.792` | `0.912` | `0.500` |
+| `MULTI` | `0.763` | `0.838` | `0.322` | `0.200` |
 
-Judge API key can be rotated independently of the graph LLM:
-```bash
-JUDGE_GEMINI_API_KEY=<alternate_key> make eval-smoke-p2
-```
+Interpretation:
 
-**Rate limiting:** RAGAS calls the judge LLM once per context per row. With 3 contexts × 31 rows,
-that is ~93 judge calls. Free-tier APIs (Gemini 2.0 Flash: 10 RPM, 200 RPD) may be exhausted.
-`PHASE2_DELAY_SEC=5` adds a delay between rows; `PHASE2_MAX_RETRIES=4` retries on 429.
-
-### 9.5 Context Trimming for Judge
-
-Raw legal chunks can be 1500 chars. RAGAS judge prompt with 5 chunks × 1500 chars exceeds
-context limits. Trimming applied before Phase 2:
-
-```
-RAGAS_MAX_CONTEXTS = 3      — only score top-3 contexts (not all 5)
-RAGAS_CONTEXT_CHAR_LIMIT = 800    — trim each context to 800 chars
-RAGAS_ANSWER_CHAR_LIMIT = 800     — trim answer to 800 chars
-RAGAS_REFERENCE_CHAR_LIMIT = 600  — trim ground truth to 600 chars
-```
-
-### 9.6 Current Eval Results (5-row smoke, April 2026)
-
-| Row | Query Type | Faithfulness | Relevancy | Prec | Root Issue |
-|---|---|---|---|---|---|
-| CENTRAL-FACT-001 | fact_lookup | 0.50 | ~0.80 | 0.00 | S.11 main demoted by reranker; sub-sections rank higher |
-| CENTRAL-FACT-002 | fact_lookup | 0.62 | ~0.82 | 0.33 | S.19 at rank 3; judge awards partial credit |
-| CENTRAL-XREF-001 | cross_reference | 0.50 | ~0.80 | 1.00 | S.18 at rank 1; garbage financial doc removed |
-| CENTRAL-CONF-001 | conflict_detection | 0.62 | ~0.85 | 0.00 | Only central RERA retrieved; state rule missing |
-| CENTRAL-TEMP-001 | temporal | 1.00 | ~0.72 | 0.00 | Generator says "insufficient info" — S.5 not in top-5 |
-
-Overall: faithfulness=0.650, context_precision=0.267, pass_rate=0% (threshold=0.7)
+- grounding is now strong enough that hallucination is no longer the primary failure mode
+- ranking quality improved materially
+- multi-jurisdiction comparison remains the biggest retrieval gap
+- eval latency is high enough that streaming is important for user-facing UX
 
 ---
 
-## 10. Known Failure Modes
+## 11. Known Failure Modes
 
-### 10.1 Sub-Section Demotion (FACT-001)
+### 11.1 Multi-Jurisdiction Retrieval
 
-**Symptom:** S.11 main ("Obligations of promoter") gets demoted by the cross-encoder even
-though it's the target section. The cross-encoder scores S.11(2) and S.11(3) higher because
-their body text contains specific duty clauses more directly relevant to the query.
+Cross-jurisdiction questions still underperform.
 
-**Why:** S.11 main's first sentence is procedural ("log in to the website with credentials..."),
-not about obligations. Cross-encoder scores it lower.
+Observed symptom:
 
-**Mitigation options:**
-- Pin parent section when any sub-section is retrieved (aggressive pinning)
-- Rewrite the section text during ingestion to deduplicate procedural preambles
-- Ask the generator to synthesize from all S.11 sub-sections even without S.11 main
+- `MULTI` pass rate only `0.200`
 
-### 10.2 Single-Jurisdiction Retrieval for Conflict Detection (CONF-001)
+Likely causes:
 
-**Symptom:** "How do state RERA rules differ from central RERA on registration?" retrieves
-central RERA chunks but not the relevant state rule chunk. Faithfulness=0.62 (generator
-uses hedging language), context_precision=0.00 (state rule not in context at all).
+- one jurisdiction dominates semantic retrieval
+- reranker still sees mixed chunks without explicit two-sided decomposition
 
-**Root cause:** `conflict_detection` routes to `hybrid_retrieval`, which does a single
-RRF search. A query about "state vs central" is ambiguous — the embedding similarity
-pulls toward whichever jurisdiction dominates the corpus.
+### 11.2 Fact Lookup Precision
 
-**Planned fix:** Multi-query decomposition — run two separate RRF queries (one biased
-toward central, one toward each state) and merge before reranking.
+`fact_lookup` is still weakest among common traffic:
 
-### 10.3 Temporal Query FTS Miss (TEMP-001)
+- pass rate `0.429`
+- context precision `0.513`
 
-**Symptom:** Query "What is the timeline for project registration?" should retrieve S.5
-(30-day rule). S.5 IS found by RRF and scores 0.99 on the cross-encoder, but sometimes
-doesn't appear in the final top-5 due to S.4 family expansion filling pool slots.
+Likely causes:
 
-**Root cause:** S.4(14) appears in the RRF top-10, which triggers expansion of the entire
-S.4 family (14 sub-sections). These fill the `_MAX_VECTOR_EXPANDED=40` pool before
-reranking, and after gap filtering S.4 sub-sections at low scores may still occupy slots
-that S.5 would have used.
+- broad questions invite many semantically related sub-clauses
+- exact top-level section sometimes loses to more specific descendants
 
-**Partial fix applied:** Classifier now rewrites temporal queries to include legal time
-keywords ("grant or reject registration within thirty days deemed registered") — this
-improves FTS recall of S.5.
+### 11.3 Latency
+
+Eval-mode latency remains large:
+
+- p50 ~102 seconds
+- p90 ~161 seconds
+
+Implication:
+
+- buffered endpoint is expensive for user experience
+- streaming endpoint is necessary, not optional
 
 ---
 
-## 11. Configuration Reference
+## 12. Configuration Reference
 
-All RAG parameters in `config/settings.py`:
+Important RAG settings from `config/settings.py`:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `reranker_model` | `rank-T5-flan` | Cross-encoder model |
-| `reranker_score_threshold` | `0.1` | Min score to enter candidate pool |
-| `reranker_score_gap` | `0.6` | Score cliff threshold for gap filter |
-| `embedding_model` | `nomic-embed-text` | Sentence-transformers model name |
-| `embedding_dimension` | `768` | pgvector index dimension |
+| `primary_model` | `z-ai/glm4.7` | main thinking-tier model |
+| `fast_model` | `gemini/gemini-3.1-flash-lite-preview` | fast-tier tasks |
+| `fallback_model_1` | `meta/llama-3.3-70b-versatile` | first fallback |
+| `fallback_model_2` | `deepseek-ai/deepseek-v4-flash` | second fallback |
+| `fallback_model_3` | `minimaxai/minimax-m2.7` | third fallback |
+| `embedding_model` | `nomic-embed-text` | embedding model |
+| `embedding_dimension` | `768` | pgvector dimension |
+| `reranker_model` | `ms-marco-MiniLM-L-12-v2` | FlashRank cross-encoder |
+| `reranker_score_threshold` | `0.05` | minimum score to keep |
+| `reranker_score_gap` | `0.95` | score-cliff cutoff |
 
-Environment overrides for eval:
+Important eval env vars:
 
 | Env Var | Effect |
 |---|---|
-| `EVAL_LIMIT` | Limit eval to first N rows (default: all) |
-| `EVAL_PHASE` | "1" = phase 1 only, "2" = phase 2 only |
-| `JUDGE_PROVIDER` | `groq` / `gemini` / `osmapi` |
-| `JUDGE_MODEL` | Judge LLM model name |
-| `JUDGE_GEMINI_API_KEY` | Alternate Gemini key for judge only |
-| `PASS_THRESHOLD` | RAGAS pass threshold (default: 0.7) |
-| `PHASE2_DELAY_SEC` | Delay between judge calls (default: 5) |
-| `RAGAS_MAX_CONTEXTS` | Max contexts passed to judge (default: 3) |
-| `RAGAS_CONTEXT_CHAR_LIMIT` | Char trim per context (default: 800) |
+| `EVAL_PHASE` | run phase 1 only, phase 2 only, or both |
+| `EVAL_LIMIT` | limit number of rows |
+| `EVAL_IDS` | evaluate only specific row IDs |
+| `EVAL_JURISDICTION` | evaluate one jurisdiction only |
+| `JUDGE_PROVIDER` | judge backend |
+| `JUDGE_MODEL` | judge model |
+| `NO_REASONING` | disable thinking where supported |
+| `PASS_THRESHOLD` | pass threshold |
+| `PHASE2_DELAY_SEC` | inter-row delay for judge calls |
+| `RAGAS_MAX_CONTEXTS` | contexts sent to judge |
+| `RAGAS_CONTEXT_CHAR_LIMIT` | trim limit per context |
 
 ---
 
-## 12. Implementation Checklist
+## 13. Implementation Checklist
 
-When adding a new jurisdiction or document corpus:
+When adding a new jurisdiction or corpus:
 
-- [ ] Add `DocumentSpec` to `document_registry.py` with correct `max_pages` to exclude forms
-- [ ] Verify PDF is born-digital (not scanned) — use `pdffonts` or PyMuPDF `get_text()` check
-- [ ] Run `make ingest --jurisdiction <JUR>` — check `fallback_paragraph_chunking` logs
-- [ ] Verify chunk count in PostgreSQL (`SELECT COUNT(*), jurisdiction FROM legal_chunks GROUP BY 2`)
-- [ ] Run `make eval-smoke-p1` and inspect retrieved contexts for new jurisdiction queries
-- [ ] Add rows to `eval/golden_dataset.jsonl` covering all 5 query types for new jurisdiction
-- [ ] Run `make eval-p1 && make eval-p2` — check context_precision for new rows ≥ 0.40
+- add `DocumentSpec` with correct page cap
+- verify PDF is text-extractable, not image-only
+- ingest and inspect fallback chunking logs
+- verify chunk counts in Postgres
+- add eval rows for all major query types
+- rerun full eval and inspect jurisdiction-specific precision

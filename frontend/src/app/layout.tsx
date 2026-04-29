@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   title: 'CivicSetu | Digital Ledger',
   description:
     'Query Indian real estate regulations across multiple jurisdictions with cited answers and graph exploration.',
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export default function RootLayout({
@@ -28,7 +31,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${instrumentSerif.variable}`}>
+      <body className={`${inter.variable} ${instrumentSerif.variable}`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

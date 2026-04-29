@@ -2,6 +2,7 @@
 
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 
 interface Props {
   onNewConversation: () => void;
@@ -19,7 +20,7 @@ export function Header({ onNewConversation: _onNewConversation }: Props) {
     <header className="z-20 flex h-12 shrink-0 items-center justify-between bg-[#0d0d0d] px-6">
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-[#4f98a3]">CS</span>
+          <Image src="/logo.png" alt="CivicSetu Logo" width={24} height={24} className="rounded-sm" />
           <h1 className="ledger-brand text-xl">CivicSetu</h1>
         </div>
 
