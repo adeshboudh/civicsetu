@@ -1,6 +1,6 @@
 # CivicSetu - RAG Techniques Reference
 
-**Version:** 2.1 - Streaming + Eval Refresh  
+**Version:** 2.2 - Cloud Sync + Ingestion Refresh  
 **Last Updated:** 2026-04-30
 
 This document describes the retrieval-augmented generation stack currently used in CivicSetu, what is live in the app today, and where the weak spots still are.
@@ -9,8 +9,13 @@ This document describes the retrieval-augmented generation stack currently used 
 
 ## 1. Current Status Snapshot
 
-As of **2026-04-29**, CivicSetu's RAG app is usable end-to-end, but still under retrieval and latency tuning.
+As of **2026-04-30**, CivicSetu's RAG app is usable end-to-end, with a fresh ingestion cycle completed.
 
+- **Cloud Infrastructure Live**
+  - Relational & Vector: **Neon (Postgres + pgvector)**
+  - Graph: **Neo4j AuraDB**
+  - Frontend: **Vercel**
+  - Backend API: **Hugging Face Spaces**
 - **Live app routes**
   - `POST /api/v1/query` - buffered response
   - `POST /api/v1/query/stream` - SSE token streaming
@@ -544,11 +549,11 @@ Important RAG settings from `config/settings.py`:
 
 | Parameter | Default | Effect |
 |---|---|---|
-| `primary_model` | `z-ai/glm4.7` | main thinking-tier model |
+| `primary_model` | `gemini/gemini-3.1-flash-lite-preview` | main thinking-tier model |
 | `fast_model` | `gemini/gemini-3.1-flash-lite-preview` | fast-tier tasks |
-| `fallback_model_1` | `meta/llama-3.3-70b-versatile` | first fallback |
-| `fallback_model_2` | `deepseek-ai/deepseek-v4-flash` | second fallback |
-| `fallback_model_3` | `minimaxai/minimax-m2.7` | third fallback |
+| `fallback_model_1` | `groq/llama-3.3-70b-versatile` | first fallback |
+| `fallback_model_2` | `openrouter/meta-llama/llama-3.3-70b-instruct:free` | second fallback |
+| `fallback_model_3` | `openrouter/qwen/qwen3.6-plus:free` | third fallback |
 | `embedding_model` | `nomic-embed-text` | embedding model |
 | `embedding_dimension` | `768` | pgvector dimension |
 | `reranker_model` | `ms-marco-MiniLM-L-12-v2` | FlashRank cross-encoder |

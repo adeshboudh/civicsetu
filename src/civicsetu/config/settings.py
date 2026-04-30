@@ -107,17 +107,23 @@ class Settings(BaseSettings):
 
     @property
     def postgres_dsn(self) -> str:
-        return (
+        base = (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        if "neon.tech" in self.postgres_host:
+            return f"{base}?sslmode=require"
+        return base
 
     @property
     def postgres_conninfo(self) -> str:
-        return (
+        base = (
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        if "neon.tech" in self.postgres_host:
+            return f"{base}?sslmode=require"
+        return base
 
     @property
     def is_production(self) -> bool:
