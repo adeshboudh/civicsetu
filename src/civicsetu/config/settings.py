@@ -1,7 +1,8 @@
-from typing import Annotated
+import os
 from functools import lru_cache
+from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -60,9 +61,12 @@ class Settings(BaseSettings):
     postgres_password: str = Field(default="civicsetu_dev", alias="POSTGRES_PASSWORD")
 
     # Neo4j (Phase 1)
-    neo4j_uri: str = Field(default="bolt://localhost:7687", alias="NEO4J_URI")
-    neo4j_user: str = Field(default="neo4j", alias="NEO4J_USER")
-    neo4j_password: str = Field(default="", alias="NEO4J_PASSWORD")
+    neo4j_uri: str = Field(default="bolt://localhost:7687", validation_alias="NEO4J_URI")
+    neo4j_user: str = Field(
+        default="neo4j",
+        validation_alias=AliasChoices("NEO4J_USER", "NEO4J_USERNAME"),
+    )
+    neo4j_password: str = Field(default="", validation_alias="NEO4J_PASSWORD")
 
     # FastAPI
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
@@ -92,6 +96,14 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @model_validator(mode="after")
+    def apply_neo4j_username_fallback(self) -> "Settings":
+        if self.neo4j_user == "neo4j":
+            aura_username = os.getenv("NEO4J_USERNAME", "").strip()
+            if aura_username:
+                self.neo4j_user = aura_username
+        return self
 
     @property
     def postgres_dsn(self) -> str:
