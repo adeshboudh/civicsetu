@@ -1,7 +1,7 @@
 # CivicSetu - RAG Techniques Reference
 
 **Version:** 2.1 - Streaming + Eval Refresh  
-**Last Updated:** 2026-04-29
+**Last Updated:** 2026-04-30
 
 This document describes the retrieval-augmented generation stack currently used in CivicSetu, what is live in the app today, and where the weak spots still are.
 
@@ -33,6 +33,11 @@ As of **2026-04-29**, CivicSetu's RAG app is usable end-to-end, but still under 
   - `answer_relevancy=0.858`
   - `context_precision=0.696`
   - `pass_rate=0.581`
+- **Knowledge Graph Scale (as of 2026-04-30)**
+  - Documents: `6`
+  - Sections: `1,160`
+  - `REFERENCES` edges: `314`
+  - `DERIVED_FROM` edges: `62`
 - **Main remaining weakness**
   - multi-jurisdiction retrieval still weak
   - `MULTI` rows pass only `20%`
@@ -112,6 +117,17 @@ Current defaults from `config/settings.py`:
 - `embedding_dimension = 768`
 
 Query and document embeddings use asymmetric prefixes compatible with Nomic-style retrieval.
+
+### 3.6 Graph Seeding
+
+`ingestion/graph_seeder.py` populates the Neo4j knowledge graph using data already persisted in PostgreSQL.
+
+Key steps:
+- **Idempotent Upsert:** Documents and Sections are merged into Neo4j using UUID5 `chunk_id`.
+- **Relationship Extraction:** 
+  - `REFERENCES`: `MetadataExtractor` identifies section numbers in text (e.g., "under section 18"). Handles internal and cross-jurisdiction links.
+  - `DERIVED_FROM`: Static mapping identifies which State Rule sections derive from which Central Act sections (both at Document and Section level).
+- **Execution:** Automatically triggered at the end of `scripts/ingest.py` or manually via `scripts/seed_phase3.py`.
 
 ---
 
@@ -218,7 +234,7 @@ Used for section-centric questions and legal relationships.
 Current behavior:
 
 - extract section or rule IDs from query
-- traverse Neo4j relationships such as `REFERENCES` and `DERIVED_FROM`
+- traverse Neo4j relationships (`REFERENCES` and `DERIVED_FROM`) populated during [Graph Seeding](#36-graph-seeding)
 - hydrate matching sections back from Postgres
 
 Graph retrieval is especially important for:
@@ -565,5 +581,6 @@ When adding a new jurisdiction or corpus:
 - verify PDF is text-extractable, not image-only
 - ingest and inspect fallback chunking logs
 - verify chunk counts in Postgres
+- run graph seeding (manual via `scripts/seed_phase3.py` or via `scripts/ingest.py`)
 - add eval rows for all major query types
 - rerun full eval and inspect jurisdiction-specific precision
