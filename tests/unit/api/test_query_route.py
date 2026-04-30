@@ -78,6 +78,33 @@ def test_app_startup_warms_reranker_from_retrieval_module():
     mock_get_ranker.assert_called_once()
 
 
+def test_app_startup_on_non_windows_does_not_shadow_asyncio():
+    fake_checkpointer = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_checkpointer_context():
+        yield fake_checkpointer
+
+    with patch("civicsetu.api.main.sys.platform", "linux"), patch(
+        "civicsetu.api.main.create_checkpointer", return_value=fake_checkpointer_context()
+    ), patch("civicsetu.agent.graph.get_compiled_graph", return_value=MagicMock()), patch(
+        "civicsetu.api.main.get_driver", new=AsyncMock()
+    ), patch("civicsetu.api.main.close_driver", new=AsyncMock()), patch(
+        "civicsetu.retrieval.warm_embedding_model"
+    ) as mock_warm_embedding_model, patch(
+        "civicsetu.retrieval.reranker._get_ranker"
+    ) as mock_get_ranker:
+        from civicsetu.api.main import create_app
+
+        app = create_app()
+
+        with TestClient(app):
+            pass
+
+    mock_warm_embedding_model.assert_called_once()
+    mock_get_ranker.assert_called_once()
+
+
 def test_query_returns_200_with_citations(client):
     test_client, mock_graph = client
     mock_graph.invoke.return_value = {
