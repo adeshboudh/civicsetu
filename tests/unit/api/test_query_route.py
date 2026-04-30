@@ -105,6 +105,41 @@ def test_app_startup_on_non_windows_does_not_shadow_asyncio():
     mock_get_ranker.assert_called_once()
 
 
+def test_root_returns_ok_when_frontend_not_served(client):
+    test_client, _ = client
+
+    response = test_client.get("/")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_graph_topology_returns_empty_payload_when_neo4j_auth_fails(client):
+    test_client, _ = client
+
+    with patch(
+        "civicsetu.api.routes.graph.GraphStore.get_topology",
+        new=AsyncMock(side_effect=RuntimeError("Neo.ClientError.Security.Unauthorized")),
+    ), patch(
+        "civicsetu.api.routes.graph.GraphStore.graph_stats",
+        new=AsyncMock(side_effect=RuntimeError("Neo.ClientError.Security.Unauthorized")),
+    ):
+        response = test_client.get("/api/v1/graph/topology")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "nodes": [],
+        "edges": [],
+        "stats": {
+            "docs": 0,
+            "sections": 0,
+            "refs": 0,
+            "has_sec": 0,
+            "derived_from": 0,
+        },
+    }
+
+
 def test_query_returns_200_with_citations(client):
     test_client, mock_graph = client
     mock_graph.invoke.return_value = {
