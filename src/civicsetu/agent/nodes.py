@@ -110,7 +110,7 @@ def _llm_call(prompt: str, system: str, temperature: float = 0.0, tier: str = "t
                 "max_tokens": 16384,
             }
             # ── NVIDIA-hosted models (GLM4.7, Minimax) ───────────────
-            _nvidia_models = ("z-ai/glm4.7", "minimaxai/minimax-m2.7", "deepseek-ai/deepseek-v4-pro", "deepseek-ai/deepseek-v4-flash")
+            _nvidia_models = ("z-ai/glm4.7", "minimaxai/minimax-m2.7", "moonshotai/kimi-k2-thinking", "moonshotai/kimi-k2-instruct")
             if any(nm in model for nm in _nvidia_models):
                 completion_kwargs["api_base"] = "https://integrate.api.nvidia.com/v1"
                 completion_kwargs["api_key"] = os.getenv("NVIDIA_API_KEY")
