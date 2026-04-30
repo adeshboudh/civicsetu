@@ -2,13 +2,13 @@
 
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 
 interface Props {
   onNewConversation: () => void;
+  onMenuClick?: () => void;
 }
 
-export function Header({ onNewConversation: _onNewConversation }: Props) {
+export function Header({ onNewConversation: _onNewConversation, onMenuClick }: Props) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -20,11 +20,31 @@ export function Header({ onNewConversation: _onNewConversation }: Props) {
     <header className="z-20 flex h-12 shrink-0 items-center justify-between bg-[#0d0d0d] px-6">
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-2">
-          <Image src="/logo.png" alt="CivicSetu Logo" width={24} height={24} className="rounded-sm" />
+          {/* Use standard img instead of next/image to allow suppressHydrationWarning to work on the img tag directly,
+              preventing hydration mismatches caused by browser extensions like Dark Reader. */}
+          <img
+            src="/logo.png"
+            alt="CivicSetu Logo"
+            width={24}
+            height={24}
+            className="rounded-sm"
+            style={{ color: 'transparent' }}
+            suppressHydrationWarning
+          />
           <h1 className="ledger-brand text-xl">CivicSetu</h1>
         </div>
 
         <div className="flex items-center gap-4">
+          {onMenuClick && (
+            <button
+              type="button"
+              onClick={onMenuClick}
+              aria-label="Open menu"
+              className="grid h-8 w-8 place-items-center rounded-[6px] text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white/70 active:scale-95 lg:hidden"
+            >
+              <MenuIcon />
+            </button>
+          )}
           {mounted ? (
             <button
               type="button"
@@ -79,6 +99,25 @@ function SunIcon() {
       <path d="M18.8 12h2.4" />
       <path d="m4.7 19.3 1.7-1.7" />
       <path d="m17.6 6.4 1.7-1.7" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="18" x2="21" y2="18" />
     </svg>
   );
 }

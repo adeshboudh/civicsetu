@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { BottomNavBar } from '@/components/BottomNavBar';
 import { ChatThread } from '@/components/ChatThread';
 import { Header } from '@/components/Header';
 import { InputBar } from '@/components/InputBar';
@@ -53,7 +54,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#0d0d0d] text-[#e5e2e1]">
-      <Header onNewConversation={newConversation} />
+      <Header onNewConversation={newConversation} onMenuClick={() => setIsDrawerOpen(true)} />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
         <aside
@@ -128,7 +129,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="flex h-6 shrink-0 items-center justify-between bg-[#0d0d0d] px-4 font-mono text-[10px] uppercase tracking-tight text-zinc-600">
+      <footer className="flex h-6 shrink-0 items-center justify-between bg-[#0d0d0d] px-4 font-mono text-[10px] uppercase tracking-tight text-zinc-600 lg:flex">
         <div className="flex items-center gap-4">
           <span>DB_LATENCY: 12ms</span>
           <span>CORPUS: RERA_INDIA_2026</span>
@@ -138,6 +139,8 @@ export default function Home() {
           System ready
         </div>
       </footer>
+
+      <BottomNavBar activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );
 }
