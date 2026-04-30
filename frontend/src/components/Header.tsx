@@ -19,21 +19,6 @@ export function Header({ onNewConversation: _onNewConversation, onMenuClick }: P
   return (
     <header className="z-20 flex h-12 shrink-0 items-center justify-between bg-[#0d0d0d] px-6">
       <div className="flex w-full items-center justify-between">
-        <div className="flex items-center gap-2">
-          {/* Use standard img instead of next/image to allow suppressHydrationWarning to work on the img tag directly,
-              preventing hydration mismatches caused by browser extensions like Dark Reader. */}
-          <img
-            src="/logo.png"
-            alt="CivicSetu Logo"
-            width={24}
-            height={24}
-            className="rounded-sm"
-            style={{ color: 'transparent' }}
-            suppressHydrationWarning
-          />
-          <h1 className="ledger-brand text-xl">CivicSetu</h1>
-        </div>
-
         <div className="flex items-center gap-4">
           {onMenuClick && (
             <button
@@ -45,6 +30,23 @@ export function Header({ onNewConversation: _onNewConversation, onMenuClick }: P
               <MenuIcon />
             </button>
           )}
+          <div className="flex items-center gap-2">
+            {/* Use standard img instead of next/image to allow suppressHydrationWarning to work on the img tag directly,
+                preventing hydration mismatches caused by browser extensions like Dark Reader. */}
+            <img
+              src="/logo.png"
+              alt="CivicSetu Logo"
+              width={24}
+              height={24}
+              className="rounded-sm max-lg:hidden"
+              style={{ color: 'transparent' }}
+              suppressHydrationWarning
+            />
+            <h1 className="ledger-brand text-xl">CivicSetu</h1>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
           {mounted ? (
             <button
               type="button"
