@@ -16,7 +16,7 @@ export function CitationsPanel({ citations }: Props) {
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
-        className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-white/30 transition-colors hover:text-[#4f98a3] active:scale-[0.98]"
+        className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-white/30 transition-[color,transform] duration-150 ease-out hover:text-[#4f98a3] active:scale-[0.97]"
       >
         <span className={`transition-transform duration-150 ease-out ${open ? 'rotate-180' : ''}`}>&#x25BC;</span>
         {citations.length} citation{citations.length === 1 ? '' : 's'}
@@ -49,7 +49,7 @@ export function CitationsPanel({ citations }: Props) {
                     href={citation.source_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[#4f98a3] transition-colors hover:text-[#8ad2de]"
+                    className="inline-block text-[#4f98a3] transition-[color,transform] duration-150 ease-out hover:text-[#8ad2de] active:scale-[0.97]"
                   >
                     Source
                   </a>

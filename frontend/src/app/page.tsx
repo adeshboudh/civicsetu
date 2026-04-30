@@ -70,7 +70,7 @@ export default function Home() {
                   key={item.label}
                   type="button"
                   aria-label={item.label}
-                  className={`grid h-8 w-8 place-items-center rounded-[6px] text-sm transition-[background-color,color,transform] duration-150 ease-out active:scale-95 ${
+                  className={`grid h-8 w-8 place-items-center rounded-[6px] text-sm transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] ${
                     item.active
                       ? 'bg-[#222222] text-[#4f98a3]'
                       : 'text-white/30 hover:bg-[#222222] hover:text-white/70'
@@ -82,7 +82,7 @@ export default function Home() {
               <button
                 type="button"
                 aria-label="Settings"
-                className="mt-auto grid h-8 w-8 place-items-center rounded-[6px] text-sm text-white/30 transition-[background-color,color,transform] duration-150 ease-out hover:bg-[#222222] hover:text-white/70 active:scale-95"
+                className="mt-auto grid h-8 w-8 place-items-center rounded-[6px] text-sm text-white/30 transition-[background-color,color,transform] duration-150 ease-out hover:bg-[#222222] hover:text-white/70 active:scale-[0.97]"
               >
                 S
               </button>
@@ -93,7 +93,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={newConversation}
-                  className="inline-flex items-center gap-2 rounded-[6px] bg-[#1a1a1a] px-3 py-1.5 text-xs text-white/60 transition-[background-color,color,transform] duration-150 ease-out hover:bg-[#222222] hover:text-white/80 active:scale-[0.98]"
+                  className="inline-flex items-center gap-2 rounded-[6px] bg-[#1a1a1a] px-3 py-1.5 text-xs text-white/60 transition-[background-color,color,transform] duration-150 ease-out hover:bg-[#222222] hover:text-white/80 active:scale-[0.97]"
                 >
                   <span className="text-sm">+</span>
                   New Conversation

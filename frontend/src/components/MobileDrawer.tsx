@@ -20,7 +20,10 @@ export function MobileDrawer({ isOpen, onClose }: Props) {
         </div>
         <nav className="p-4 space-y-2">
            {['Research', 'Legal tools', 'Library', 'History', 'Settings'].map(item => (
-             <button key={item} className="flex w-full items-center gap-3 px-4 py-3 rounded-lg text-sm text-zinc-400 hover:bg-white/5 hover:text-white transition-colors">
+             <button
+               key={item}
+               className="flex w-full items-center gap-3 px-4 py-3 rounded-lg text-sm text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white active:scale-[0.97]"
+             >
                {item}
              </button>
            ))}

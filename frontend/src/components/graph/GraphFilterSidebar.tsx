@@ -59,7 +59,7 @@ export function GraphFilterSidebar({ filters, onFiltersChange, topology }: Props
   return (
     <div className="absolute left-3 top-3 z-10 w-48 border border-white/[0.07] bg-[#141414]/95 text-xs text-white/60 shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur">
       <button
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.22em] text-white/40 transition-colors hover:text-white/70 active:scale-[0.99]"
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-[0.22em] text-white/40 transition-[background-color,color,transform] duration-150 ease-out hover:text-white/70 active:scale-[0.97]"
         onClick={() => setCollapsed(value => !value)}
         aria-label="Toggle graph filters"
         type="button"
@@ -79,7 +79,7 @@ export function GraphFilterSidebar({ filters, onFiltersChange, topology }: Props
               {ALL_JURISDICTIONS.map(j => (
                 <label
                   key={j}
-                  className="flex cursor-pointer items-center gap-2 py-0.5 transition-colors hover:text-white/80"
+                  className="flex cursor-pointer items-center gap-2 py-0.5 transition-[color,transform] duration-150 ease-out hover:text-white/80 active:scale-[0.98]"
                 >
                   <input
                     type="checkbox"
@@ -103,7 +103,7 @@ export function GraphFilterSidebar({ filters, onFiltersChange, topology }: Props
             {(['REFERENCES', 'DERIVED_FROM'] as const).map(t => (
               <label
                 key={t}
-                className="flex cursor-pointer items-center gap-2 py-0.5 transition-colors hover:text-white/80"
+                className="flex cursor-pointer items-center gap-2 py-0.5 transition-[color,transform] duration-150 ease-out hover:text-white/80 active:scale-[0.98]"
               >
                 <input
                   type="checkbox"
@@ -130,7 +130,7 @@ export function GraphFilterSidebar({ filters, onFiltersChange, topology }: Props
             {(['connections', 'uniform'] as const).map(mode => (
               <label
                 key={mode}
-                className="flex cursor-pointer items-center gap-2 py-0.5 transition-colors hover:text-white/80"
+                className="flex cursor-pointer items-center gap-2 py-0.5 transition-[color,transform] duration-150 ease-out hover:text-white/80 active:scale-[0.98]"
               >
                 <input
                   type="radio"

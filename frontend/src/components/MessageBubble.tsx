@@ -77,7 +77,7 @@ export function MessageBubble({ message }: Props) {
                 href={href}
                 target="_blank"
                 rel="noreferrer"
-                className="font-medium text-[#4f98a3] underline decoration-[#4f98a3]/40 underline-offset-4 hover:text-[#72bdc6]"
+                className="inline-block font-medium text-[#4f98a3] underline decoration-[#4f98a3]/40 underline-offset-4 transition-[color,transform] duration-150 ease-out hover:text-[#72bdc6] active:scale-[0.97]"
               >
                 {children}
               </a>

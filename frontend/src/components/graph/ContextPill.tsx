@@ -15,7 +15,7 @@ export function ContextPill({ sectionId, docName, jurisdiction, onRemove }: Prop
       </span>
       <button
         onClick={onRemove}
-        className="text-white/30 transition-colors hover:text-white/70 active:scale-95"
+        className="text-white/30 transition-[color,transform] duration-150 ease-out hover:text-white/70 active:scale-[0.97]"
         aria-label="Remove section context"
         type="button"
       >

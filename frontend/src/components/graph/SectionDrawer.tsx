@@ -60,14 +60,14 @@ export function SectionDrawer({
                 href={content.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/30 transition-colors hover:text-[#4f98a3]"
+                className="inline-block font-mono text-[9px] uppercase tracking-[0.18em] text-white/30 transition-[color,transform] duration-150 ease-out hover:text-[#4f98a3] active:scale-[0.97]"
               >
                 View PDF
               </a>
             ) : null}
             <button
               onClick={onClose}
-              className="text-white/30 transition-colors hover:text-white/70 active:scale-95"
+              className="text-white/30 transition-[color,transform] duration-150 ease-out hover:text-white/70 active:scale-[0.97]"
               aria-label="Close section drawer"
               type="button"
             >
@@ -108,7 +108,7 @@ export function SectionDrawer({
                 <button
                   key={`${section.section_id}-${index}`}
                   onClick={() => onNodeNavigate(section.section_id, section.jurisdiction)}
-                  className="shrink-0 border border-white/[0.08] bg-white/[0.02] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40 transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-white/20 hover:bg-white/[0.05] hover:text-white/75 active:scale-[0.98]"
+                  className="shrink-0 border border-white/[0.08] bg-white/[0.02] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40 transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-white/20 hover:bg-white/[0.05] hover:text-white/75 active:scale-[0.97]"
                   type="button"
                   style={{
                     borderColor: section.edge_type.startsWith('DERIVED') ? 'rgba(232,175,52,0.28)' : undefined,
@@ -123,7 +123,7 @@ export function SectionDrawer({
               onClick={() =>
                 onChatAboutSection(content.section_id, content.title, content.doc_name, content.jurisdiction)
               }
-              className="shrink-0 border border-[#4f98a3]/35 bg-[#4f98a3]/10 px-3 py-1.5 text-[11px] font-medium text-[#9ed4dc] transition-[background-color,border-color,transform] duration-150 ease-out hover:border-[#4f98a3]/70 hover:bg-[#4f98a3]/16 active:scale-[0.98]"
+              className="shrink-0 border border-[#4f98a3]/35 bg-[#4f98a3]/10 px-3 py-1.5 text-[11px] font-medium text-[#9ed4dc] transition-[background-color,border-color,transform] duration-150 ease-out hover:border-[#4f98a3]/70 hover:bg-[#4f98a3]/16 active:scale-[0.97]"
               type="button"
             >
               Chat about section

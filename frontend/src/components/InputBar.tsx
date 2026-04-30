@@ -96,12 +96,12 @@ export function InputBar({ onSend, disabled, pendingQuery }: Props) {
   }
 
   return (
-    <div className="shrink-0 bg-[#0d0d0d] p-3">
+    <div className="shrink-0 bg-[#0d0d0d] p-3 max-lg:pb-24">
       <div ref={jurisdictionMenuRef} className="relative mb-1 w-fit">
         <button
           type="button"
           onClick={() => setIsJurisdictionOpen(value => !value)}
-          className="inline-flex h-7 items-center gap-2 rounded-[7px] border border-white/[0.07] bg-[#141414] px-2.5 font-mono text-[10px] uppercase tracking-[0.2em] text-white/50 transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-white/15 hover:bg-[#1a1a1a] hover:text-white/70 active:scale-[0.98]"
+          className="inline-flex h-7 items-center gap-2 rounded-[7px] border border-white/[0.07] bg-[#141414] px-2.5 font-mono text-[10px] uppercase tracking-[0.2em] text-white/50 transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-white/15 hover:bg-[#1a1a1a] hover:text-white/70 active:scale-[0.97]"
           aria-haspopup="listbox"
           aria-expanded={isJurisdictionOpen}
         >
@@ -127,7 +127,7 @@ export function InputBar({ onSend, disabled, pendingQuery }: Props) {
                   setJurisdiction(item.value);
                   setIsJurisdictionOpen(false);
                 }}
-                className={`flex w-full items-center justify-between gap-3 rounded-[6px] px-2.5 py-2 text-left text-[12px] transition-[background-color,color] duration-150 ease-out ${
+                className={`flex w-full items-center justify-between gap-3 rounded-[6px] px-2.5 py-2 text-left text-[12px] transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.98] ${
                   jurisdiction === item.value
                     ? 'bg-[#4f98a3]/12 text-[#9ed4dc]'
                     : 'text-white/60 hover:bg-white/[0.04] hover:text-white/80'
@@ -161,7 +161,7 @@ export function InputBar({ onSend, disabled, pendingQuery }: Props) {
           onClick={handleSend}
           disabled={disabled || !query.trim()}
           aria-label="Send message"
-          className="absolute bottom-2 right-3 text-[#4f98a3] transition-opacity hover:opacity-80 disabled:opacity-25"
+          className="absolute bottom-2 right-3 text-[#4f98a3] transition-[opacity,transform] duration-150 ease-out hover:opacity-80 active:scale-[0.97] disabled:opacity-25 disabled:active:scale-100"
         >
           -&gt;
         </button>

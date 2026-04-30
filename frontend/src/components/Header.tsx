@@ -40,7 +40,7 @@ export function Header({ onNewConversation: _onNewConversation, onMenuClick }: P
               type="button"
               onClick={onMenuClick}
               aria-label="Open menu"
-              className="grid h-8 w-8 place-items-center rounded-[6px] text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white/70 active:scale-95 lg:hidden"
+              className="grid h-8 w-8 place-items-center rounded-[6px] text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white/70 active:scale-[0.97] lg:hidden"
             >
               <MenuIcon />
             </button>
@@ -50,7 +50,7 @@ export function Header({ onNewConversation: _onNewConversation, onMenuClick }: P
               type="button"
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
               aria-label={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="grid h-8 w-8 place-items-center rounded-[6px] text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white/70 active:scale-95"
+              className="grid h-8 w-8 place-items-center rounded-[6px] text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white/70 active:scale-[0.97]"
             >
               {resolvedTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
             </button>

@@ -43,7 +43,7 @@ export function ChatThread({ messages, isLoading, onExampleClick }: Props) {
               key={query}
               type="button"
               onClick={() => onExampleClick(query)}
-              className="rounded-[10px] bg-[#1a1a1a] px-3.5 py-3 text-left text-[13px] leading-5 text-white/60 transition-colors hover:bg-[#222222] hover:text-white/80"
+              className="rounded-[10px] bg-[#1a1a1a] px-3.5 py-3 text-left text-[13px] leading-5 text-white/60 transition-[background-color,color,transform] duration-150 ease-out hover:bg-[#222222] hover:text-white/80 active:scale-[0.97]"
             >
               {query}
             </button>

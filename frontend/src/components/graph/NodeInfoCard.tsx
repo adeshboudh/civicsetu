@@ -47,7 +47,7 @@ export function NodeInfoCard({
           </div>
           <button
             onClick={onClose}
-            className="text-white/30 transition-colors hover:text-white/70 active:scale-95"
+            className="text-white/30 transition-[color,transform] duration-150 ease-out hover:text-white/70 active:scale-[0.97]"
             aria-label="Close section summary"
             type="button"
           >
@@ -92,7 +92,7 @@ export function NodeInfoCard({
       <div className="border-t border-white/[0.05] px-3 py-3">
         <button
           onClick={() => onChatAboutSection(node.section_id, node.title, node.doc_name, node.jurisdiction)}
-          className="w-full border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-[11px] font-medium text-white/70 transition-[background-color,border-color,transform] duration-150 ease-out hover:border-[#4f98a3]/50 hover:bg-white/[0.06] hover:text-white active:scale-[0.98]"
+          className="w-full border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-[11px] font-medium text-white/70 transition-[background-color,border-color,transform] duration-150 ease-out hover:border-[#4f98a3]/50 hover:bg-white/[0.06] hover:text-white active:scale-[0.97]"
           type="button"
         >
           Chat about this section
