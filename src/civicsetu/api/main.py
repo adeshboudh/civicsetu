@@ -21,6 +21,14 @@ log = structlog.get_logger(__name__)
 settings = get_settings()
 
 
+def _mask_secret(value: str, visible: int = 3) -> str:
+    if not value:
+        return "NOT_SET"
+    if len(value) <= visible * 2:
+        return "*" * len(value)
+    return f"{value[:visible]}...{value[-visible:]}"
+
+
 def create_checkpointer():
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -70,6 +78,13 @@ async def lifespan(app: FastAPI):
         masked_key = f"{api_key_to_log[:4]}...{api_key_to_log[-4:]}"
 
     log.info("primary_model_api_key", provider=provider, model=model_name, api_key_masked=masked_key)
+    log.info(
+        "neo4j_config_loaded",
+        uri=settings.neo4j_uri,
+        user_masked=_mask_secret(settings.neo4j_user, visible=2),
+        password_present=bool(settings.neo4j_password),
+        password_len=len(settings.neo4j_password),
+    )
 
     from civicsetu.agent.graph import get_compiled_graph
 

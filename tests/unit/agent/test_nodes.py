@@ -37,6 +37,20 @@ def test_reranker_settings_env_override(monkeypatch):
 
 # ── reranker_node ─────────────────────────────────────────────────────────────
 
+def test_neo4j_username_env_alias_override(monkeypatch):
+    """Aura-style NEO4J_USERNAME must populate neo4j_user."""
+    from civicsetu.config.settings import Settings, get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.delenv("NEO4J_USER", raising=False)
+    monkeypatch.setenv("NEO4J_USERNAME", "aura-user-123")
+
+    s = Settings()
+    assert s.neo4j_user == "aura-user-123"
+
+    get_settings.cache_clear()
+
+
 def test_reranker_empty_chunks():
     from civicsetu.agent.nodes import reranker_node
     result = reranker_node(_base_state(retrieved_chunks=[], reranked_chunks=[]))
