@@ -23,11 +23,14 @@ export default function Home() {
 
   const [pendingQuery, setPendingQuery] = useState<string | undefined>();
   const [sectionContext, setSectionContext] = useState<SectionContext | null>(null);
+  const [activeTab, setActiveTab] = useState<'chat' | 'graph'>('chat');
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const handleChatAboutSection = useCallback(
     (sectionId: string, title: string, docName: string, jurisdiction: string) => {
       setSectionContext({ sectionId, title, docName, jurisdiction });
       setPendingQuery(`Explain ${title} of ${docName}`);
+      setActiveTab('chat');
       setTimeout(() => setPendingQuery(undefined), 0);
     },
     [],
@@ -53,7 +56,11 @@ export default function Home() {
       <Header onNewConversation={newConversation} />
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="flex w-[45%] min-w-[420px] flex-col bg-[#141414] max-lg:w-full max-lg:min-w-0">
+        <aside
+          className={`flex w-[45%] min-w-[420px] flex-col bg-[#141414] max-lg:w-full max-lg:min-w-0 ${
+            activeTab !== 'chat' ? 'max-lg:hidden' : ''
+          }`}
+        >
           <div className="flex min-h-0 flex-1">
             <nav className="flex w-14 shrink-0 flex-col items-center gap-5 bg-[#111111] py-4">
               {railItems.map(item => (
@@ -112,7 +119,11 @@ export default function Home() {
           </div>
         </aside>
 
-        <section className="flex w-[55%] min-w-0 flex-col bg-[#0d0d0d] max-lg:hidden">
+        <section
+          className={`flex w-[55%] min-w-0 flex-col bg-[#0d0d0d] max-lg:w-full ${
+            activeTab !== 'graph' ? 'max-lg:hidden' : ''
+          }`}
+        >
           <GraphExplorer {...graphState} onChatAboutSection={handleChatAboutSection} />
         </section>
       </main>
