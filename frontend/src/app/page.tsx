@@ -5,6 +5,7 @@ import { BottomNavBar } from '@/components/BottomNavBar';
 import { ChatThread } from '@/components/ChatThread';
 import { Header } from '@/components/Header';
 import { InputBar } from '@/components/InputBar';
+import { MobileDrawer } from '@/components/MobileDrawer';
 import { ContextPill } from '@/components/graph/ContextPill';
 import { GraphExplorer } from '@/components/graph/GraphExplorer';
 import { useChat } from '@/hooks/useChat';
@@ -141,6 +142,7 @@ export default function Home() {
       </footer>
 
       <BottomNavBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <MobileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
     </div>
   );
 }
