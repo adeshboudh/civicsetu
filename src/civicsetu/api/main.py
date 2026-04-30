@@ -44,7 +44,6 @@ def create_checkpointer():
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     if sys.platform == "win32":
-        import asyncio
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     log.info("civicsetu_starting", env=settings.api_env)
 
