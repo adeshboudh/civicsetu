@@ -31,6 +31,18 @@ router = APIRouter()
 
 _topo_cache: dict = {"data": None, "ts": 0.0}
 _TOPO_TTL = 300
+_EMPTY_GRAPH_STATS = {
+    "docs": 0,
+    "sections": 0,
+    "refs": 0,
+    "has_sec": 0,
+    "derived_from": 0,
+}
+
+
+def _is_neo4j_auth_error(error: Exception) -> bool:
+    message = str(error)
+    return "Neo.ClientError.Security.Unauthorized" in message or "authentication failure" in message
 
 
 @router.get("/graph/topology", response_model=GraphTopologyResponse)
@@ -45,6 +57,12 @@ async def get_graph_topology() -> GraphTopologyResponse:
         nodes_raw, edges_raw = await GraphStore.get_topology()
         stats = await GraphStore.graph_stats()
     except Exception as e:
+        if _is_neo4j_auth_error(e):
+            log.warning("topology_fetch_degraded", reason="neo4j_auth_failed")
+            response = GraphTopologyResponse(nodes=[], edges=[], stats=_EMPTY_GRAPH_STATS)
+            _topo_cache["data"] = response
+            _topo_cache["ts"] = now
+            return response
         log.error("topology_fetch_failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Graph topology fetch failed: {e}")
 

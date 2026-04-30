@@ -123,6 +123,13 @@ def create_app() -> FastAPI:
     app.include_router(query.router, prefix="/api/v1", tags=["query"])
     app.include_router(graph.router, prefix="/api/v1", tags=["graph"])
 
+    @app.get("/")
+    async def root():
+        return {
+            "message": "CivicSetu API is running. Frontend is served separately in this deployment.",
+            "status": "ok",
+        }
+
     return app
 
 app = create_app()
