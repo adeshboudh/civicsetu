@@ -23,11 +23,14 @@ export function SectionDrawer({
 
   return (
     <div
-      className={`absolute inset-x-3 bottom-3 z-20 flex max-h-[42%] min-h-0 flex-col overflow-hidden border border-white/[0.07] bg-[#141414]/95 shadow-[0_22px_70px_rgba(0,0,0,0.4)] backdrop-blur transition-[opacity,transform] duration-200 ease-out ${
-        isOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0'
-      }`}
+      className={`absolute z-20 flex min-h-0 flex-col overflow-hidden bg-[#141414]/95 shadow-[0_22px_70px_rgba(0,0,0,0.4)] backdrop-blur transition-[opacity,transform] duration-300 ease-out
+        max-lg:inset-x-0 max-lg:bottom-0 max-lg:h-[70%] max-lg:rounded-t-[24px] max-lg:border-t max-lg:border-white/10
+        lg:inset-x-3 lg:bottom-3 lg:max-h-[42%] lg:border lg:border-white/[0.07]
+        ${isOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none translate-y-full lg:translate-y-3 opacity-0'}
+      `}
       aria-hidden={!isOpen}
     >
+      <div className="h-1.5 w-12 shrink-0 self-center rounded-full bg-zinc-800 my-3 lg:hidden" />
       {content ? (
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
           <div className="min-w-0 flex-1">
