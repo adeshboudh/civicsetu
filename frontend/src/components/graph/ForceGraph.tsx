@@ -264,6 +264,7 @@ export function ForceGraph({
 
   return (
     <svg
+      suppressHydrationWarning
       ref={svgRef}
       width={width}
       height={height}

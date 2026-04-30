@@ -34,7 +34,7 @@ const JURISDICTION_DOT_CLASSES = {
 } as const;
 
 export function GraphFilterSidebar({ filters, onFiltersChange, topology }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   function toggleJurisdiction(j: (typeof ALL_JURISDICTIONS)[number]) {
     const next = new Set(filters.jurisdictions);
@@ -66,8 +66,8 @@ export function GraphFilterSidebar({ filters, onFiltersChange, topology }: Props
       >
         <span className="h-1.5 w-1.5 rounded-full bg-[#4f98a3]" />
         Filters
-        <span className={`ml-auto transition-transform duration-150 ease-out ${collapsed ? '-rotate-90' : ''}`}>
-          &#x25BC;
+        <span className={`ml-auto transition-transform duration-150 ease-out origin-center ${collapsed ? '-rotate-90' : ''}`}>
+          <svg suppressHydrationWarning xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#e3e3e3"><path d="M480-384 288-576h384L480-384Z"/></svg>
         </span>
       </button>
 

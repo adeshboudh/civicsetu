@@ -17,33 +17,19 @@ export function Header({ onNewConversation: _onNewConversation, onMenuClick }: P
   }, []);
 
   return (
-    <header className="z-20 flex h-12 shrink-0 items-center justify-between bg-[#0d0d0d] px-6">
+    <header className="z-20 flex h-12 shrink-0 items-center justify-between bg-[#0d0d0d] px-4">
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-4">
           {onMenuClick && (
             <button
               type="button"
               onClick={onMenuClick}
-              aria-label="Open menu"
+              aria-label="Toggle menu"
               className="grid h-8 w-8 place-items-center rounded-[6px] text-zinc-400 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/5 hover:text-white/70 active:scale-[0.97] lg:hidden"
             >
               <MenuIcon />
             </button>
           )}
-          <div className="flex items-center gap-2">
-            {/* Use standard img instead of next/image to allow suppressHydrationWarning to work on the img tag directly,
-                preventing hydration mismatches caused by browser extensions like Dark Reader. */}
-            <img
-              src="/logo.png"
-              alt="CivicSetu Logo"
-              width={24}
-              height={24}
-              className="rounded-sm max-lg:hidden"
-              style={{ color: 'transparent' }}
-              suppressHydrationWarning
-            />
-            <h1 className="ledger-brand text-xl">CivicSetu</h1>
-          </div>
         </div>
 
         <div className="flex items-center gap-4">
@@ -65,61 +51,20 @@ export function Header({ onNewConversation: _onNewConversation, onMenuClick }: P
 
 function MoonIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20.2 14.8A8.5 8.5 0 0 1 9.2 3.8 8 8 0 1 0 20.2 14.8Z" />
-    </svg>
+    <svg suppressHydrationWarning xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="M480-120q-150 0-255-105T120-480q0-150 105-255t255-105q14 0 27.5 1t26.5 3q-41 29-65.5 75.5T444-660q0 90 63 153t153 63q55 0 101-24.5t75-65.5q2 13 3 26.5t1 27.5q0 150-105 255T480-120Zm0-80q88 0 158-48.5T740-375q-20 5-40 8t-40 3q-123 0-209.5-86.5T364-660q0-20 3-40t8-40q-78 32-126.5 102T200-480q0 116 82 198t198 82Zm-10-270Z"/></svg>
   );
 }
 
 function SunIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="3.5" />
-      <path d="M12 2.8v2.4" />
-      <path d="M12 18.8v2.4" />
-      <path d="m4.7 4.7 1.7 1.7" />
-      <path d="m17.6 17.6 1.7 1.7" />
-      <path d="M2.8 12h2.4" />
-      <path d="M18.8 12h2.4" />
-      <path d="m4.7 19.3 1.7-1.7" />
-      <path d="m17.6 6.4 1.7-1.7" />
-    </svg>
+    <svg suppressHydrationWarning xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3"><path d="M565-395q35-35 35-85t-35-85q-35-35-85-35t-85 35q-35 35-35 85t35 85q35 35 85 35t85-35Zm-226.5 56.5Q280-397 280-480t58.5-141.5Q397-680 480-680t141.5 58.5Q680-563 680-480t-58.5 141.5Q563-280 480-280t-141.5-58.5ZM200-440H40v-80h160v80Zm720 0H760v-80h160v80ZM440-760v-160h80v160h-80Zm0 720v-160h80v160h-80ZM256-650l-101-97 57-59 96 100-52 56Zm492 496-97-101 53-55 101 97-57 59Zm-98-550 97-101 59 57-100 96-56-52ZM154-212l101-97 55 53-97 101-59-57Zm326-268Z"/></svg>
   );
 }
 
 function MenuIcon() {
   return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="3" y1="12" x2="21" y2="12" />
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <line x1="3" y1="18" x2="21" y2="18" />
-    </svg>
+    <span className="material-symbols-outlined">
+      menu
+    </span>
   );
 }

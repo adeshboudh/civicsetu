@@ -34,11 +34,18 @@ export function InputBar({ onSend, disabled, pendingQuery }: Props) {
     }
 
     setQuery(pendingQuery);
-    requestAnimationFrame(() => {
+    // Use a slightly longer delay or multiple frames to ensure the DOM has updated
+    // and the layout has settled before calculating height.
+    setTimeout(() => {
       textareaRef.current?.focus();
       autoResize();
-    });
+    }, 0);
   }, [pendingQuery]);
+
+  // Also trigger autoResize when the query state changes to ensure it's always in sync
+  useEffect(() => {
+    autoResize();
+  }, [query]);
 
   useEffect(() => {
     if (!isJurisdictionOpen) {
@@ -108,7 +115,7 @@ export function InputBar({ onSend, disabled, pendingQuery }: Props) {
           <span className={`h-1.5 w-1.5 rounded-full ${selectedJurisdiction.dotClass}`} />
           {selectedJurisdiction.shortLabel}
           <span className={`text-white/25 transition-transform duration-150 ease-out ${isJurisdictionOpen ? 'rotate-180' : ''}`}>
-            &#x25BC;
+            <svg suppressHydrationWarning xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="#e3e3e3"><path d="M480-384 288-576h384L480-384Z"/></svg>
           </span>
         </button>
 
@@ -163,8 +170,7 @@ export function InputBar({ onSend, disabled, pendingQuery }: Props) {
           aria-label="Send message"
           className="absolute bottom-2 right-3 text-[#4f98a3] transition-[opacity,transform] duration-150 ease-out hover:opacity-80 active:scale-[0.97] disabled:opacity-25 disabled:active:scale-100"
         >
-          -&gt;
-        </button>
+          <svg suppressHydrationWarning xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="20px" fill="#e3e3e3"><path d="M144-192v-576l720 288-720 288Zm72-107 454-181-454-181v109l216 72-216 72v109Zm0 0v-362 362Z"/></svg>        </button>
       </div>
     </div>
   );

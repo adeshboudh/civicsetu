@@ -12,14 +12,22 @@ export function BottomNavBar({ activeTab, onTabChange }: Props) {
         onClick={() => onTabChange('chat')}
         className={`flex flex-col items-center gap-1 transition-transform duration-150 ease-out active:scale-[0.97] ${activeTab === 'chat' ? 'text-[#4f98a3]' : 'text-zinc-500'}`}
       >
-        <span className="text-xl">💬</span>
+        <span className="text-xl">
+          <span className="material-symbols-outlined">
+            chat_bubble
+          </span>
+        </span>
         <span className="text-[10px] font-medium uppercase tracking-wider">Chat</span>
       </button>
       <button
         onClick={() => onTabChange('graph')}
         className={`flex flex-col items-center gap-1 transition-transform duration-150 ease-out active:scale-[0.97] ${activeTab === 'graph' ? 'text-[#4f98a3]' : 'text-zinc-500'}`}
       >
-        <span className="text-xl">🕸️</span>
+        <span className="text-xl">
+          <span className="material-symbols-outlined">
+            graph_4
+          </span>
+        </span>
         <span className="text-[10px] font-medium uppercase tracking-wider">Graph</span>
       </button>
     </nav>

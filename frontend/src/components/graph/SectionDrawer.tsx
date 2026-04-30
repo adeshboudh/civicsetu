@@ -1,5 +1,7 @@
 'use client';
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { JURISDICTION_COLORS, JURISDICTION_LABELS } from '@/lib/constants';
 import type { SectionContent } from '@/lib/types';
 
@@ -94,40 +96,70 @@ export function SectionDrawer({
 
       {!isLoading && content ? (
         <>
-          <div className="ledger-scroll min-h-0 flex-1 overflow-y-auto px-4 py-3 text-[13px] leading-6 text-white/70">
+          <div className="ledger-scroll min-h-0 flex-1 overflow-y-auto px-4 py-3 text-[14px] leading-7 text-white/75">
             {content.chunks.map((chunk, index) => (
-              <article key={chunk.chunk_id} className={index > 0 ? 'mt-4 border-t border-white/[0.05] pt-4' : ''}>
-                <p className="whitespace-pre-wrap">{chunk.text}</p>
+              <article key={chunk.chunk_id} className={index > 0 ? 'mt-6 border-t border-white/[0.05] pt-6' : ''}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
+                    ul: ({ children }) => <ul className="mb-4 list-disc space-y-2 pl-5 last:mb-0">{children}</ul>,
+                    ol: ({ children }) => <ol className="mb-4 list-decimal space-y-2 pl-5 last:mb-0">{children}</ol>,
+                    li: ({ children }) => <li className="pl-1">{children}</li>,
+                    strong: ({ children }) => <strong className="font-semibold text-white/90">{children}</strong>,
+                    table: ({ children }) => (
+                      <div className="ledger-scroll mb-4 overflow-x-auto last:mb-0">
+                        <table className="min-w-full border-collapse text-left text-[13px] leading-6">
+                          {children}
+                        </table>
+                      </div>
+                    ),
+                    thead: ({ children }) => <thead className="border-b border-white/15 text-white/85">{children}</thead>,
+                    tbody: ({ children }) => <tbody className="divide-y divide-white/10">{children}</tbody>,
+                    th: ({ children }) => <th className="px-3 py-2 font-semibold">{children}</th>,
+                    td: ({ children }) => <td className="px-3 py-2 align-top text-white/65">{children}</td>,
+                    code: ({ children, className }) => (
+                      <code className={`rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.92em] text-white/80 ${className ?? ''}`}>
+                        {children}
+                      </code>
+                    ),
+                  }}
+                >
+                  {chunk.text}
+                </ReactMarkdown>
               </article>
             ))}
           </div>
 
-          <footer className="flex shrink-0 items-center gap-3 border-t border-white/[0.06] px-4 py-2.5">
-            <div className="ledger-scroll flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
-              {content.connected_sections.slice(0, 10).map((section, index) => (
-                <button
-                  key={`${section.section_id}-${index}`}
-                  onClick={() => onNodeNavigate(section.section_id, section.jurisdiction)}
-                  className="shrink-0 border border-white/[0.08] bg-white/[0.02] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40 transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-white/20 hover:bg-white/[0.05] hover:text-white/75 active:scale-[0.97]"
-                  type="button"
-                  style={{
-                    borderColor: section.edge_type.startsWith('DERIVED') ? 'rgba(232,175,52,0.28)' : undefined,
-                  }}
-                >
-                  Sec {section.section_id}
-                </button>
-              ))}
+          <footer className="flex shrink-0 flex-col gap-4 border-t border-white/[0.06] px-4 py-3 max-lg:pb-24 lg:flex-row lg:items-center lg:gap-3 lg:py-2.5">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/25 lg:hidden">Related</span>
+              <div className="ledger-scroll flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+                {content.connected_sections.slice(0, 10).map((section, index) => (
+                  <button
+                    key={`${section.section_id}-${index}`}
+                    onClick={() => onNodeNavigate(section.section_id, section.jurisdiction)}
+                    className="shrink-0 border border-white/[0.08] bg-white/[0.02] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40 transition-[background-color,border-color,color,transform] duration-150 ease-out hover:border-white/20 hover:bg-white/[0.05] hover:text-white/75 active:scale-[0.97]"
+                    type="button"
+                    style={{
+                      borderColor: section.edge_type.startsWith('DERIVED') ? 'rgba(232,175,52,0.28)' : undefined,
+                    }}
+                  >
+                    Sec {section.section_id}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button
               onClick={() =>
                 onChatAboutSection(content.section_id, content.title, content.doc_name, content.jurisdiction)
               }
-              className="shrink-0 border border-[#4f98a3]/35 bg-[#4f98a3]/10 px-3 py-1.5 text-[11px] font-medium text-[#9ed4dc] transition-[background-color,border-color,transform] duration-150 ease-out hover:border-[#4f98a3]/70 hover:bg-[#4f98a3]/16 active:scale-[0.97]"
+              className="flex w-full items-center justify-between border border-[#4f98a3]/35 bg-[#4f98a3]/10 px-4 py-3 text-[13px] font-medium text-[#9ed4dc] transition-[background-color,border-color,transform] duration-150 ease-out hover:border-[#4f98a3]/70 hover:bg-[#4f98a3]/16 active:scale-[0.97] lg:w-auto lg:px-3 lg:py-1.5 lg:text-[11px]"
               type="button"
             >
-              Chat about section
-            </button>
+              <span>Chat about this section</span>
+              <svg suppressHydrationWarning xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 -960 960 960" width="18px" fill="#e3e3e3"><path d="M630-444H192v-72h438L429-717l51-51 288 288-288 288-51-51 201-201Z"/></svg>            </button>
           </footer>
         </>
       ) : null}

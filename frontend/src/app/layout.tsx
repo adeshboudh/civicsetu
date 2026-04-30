@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Instrument_Serif, Inter } from 'next/font/google';
+import logo from '@frontend/assets/logo.svg';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import './globals.css';
 
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
   description:
     'Query Indian real estate regulations across multiple jurisdictions with cited answers and graph exploration.',
   icons: {
-    icon: '/logo.png',
+    icon: logo.src,
   },
 };
 
@@ -31,6 +32,12 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+          rel="stylesheet"
+        />
+      </head>
       <body
         className={`${inter.variable} ${instrumentSerif.variable}`}
         suppressHydrationWarning
