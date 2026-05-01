@@ -16,8 +16,7 @@ pinned: false
 Open-source RAG system for querying Indian civic and legal documents — with accurate
 citations, cross-reference traversal, and conflict detection between laws.
 
-**Current status:** Phase 8 complete — 5-jurisdiction RERA coverage (Central + MH + UP + KA + TN),
-RAGAS evaluation pipeline live, hybrid RRF retrieval, Next.js frontend deployed on Vercel.
+**Current status:** Phase 9 complete — 5-jurisdiction RERA coverage, RAGAS evaluation pipeline (0.90 faithfulness), hybrid RRF retrieval, and mobile-responsive Next.js frontend live on Vercel.
 
 ---
 
@@ -97,7 +96,7 @@ make serve
 
 ## Production
 
-- **Frontend:** [Vercel](https://civicsetu-two.vercel.app) — Next.js 15 App Router
+- **Frontend:** [Vercel](https://civicsetu-two.vercel.app) — Next.js 15 App Router (Mobile Responsive)
 - **API:** [Hugging Face Spaces](https://huggingface.co/spaces/adesh01/civicsetu) — FastAPI + Docker + 550MB model baked in
 - **PostgreSQL + pgvector:** [Neon](https://neon.tech) — 1203 chunks
 - **Neo4j:** [AuraDB Free](https://neo4j.com/cloud/aura) — 2090 sections, 2321 edges
@@ -184,6 +183,7 @@ Graph: 2090 Section nodes, 1297 HAS_SECTION edges, 933 REFERENCES edges, 91 DERI
 | 6 | Next.js frontend, Vercel deployment, public URL | ✅ Complete |
 | 7 | Graph explorer, section content drawer, D3 visualization | ✅ Complete |
 | 8 | RAGAS eval pipeline, hybrid RRF retrieval, retrieval quality fixes | ✅ Complete |
+| 9 | Mobile responsiveness, frontend polish, dual-pane layout, interaction animations | ✅ Complete |
 
 
 ---

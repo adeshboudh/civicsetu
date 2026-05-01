@@ -1,7 +1,7 @@
 # CivicSetu - RAG Techniques Reference
 
-**Version:** 2.2 - Cloud Sync + Ingestion Refresh  
-**Last Updated:** 2026-04-30
+**Version:** 2.3 - Mobile Ledger + Quality Hardening  
+**Last Updated:** 2026-05-01
 
 This document describes the retrieval-augmented generation stack currently used in CivicSetu, what is live in the app today, and where the weak spots still are.
 
@@ -9,8 +9,11 @@ This document describes the retrieval-augmented generation stack currently used 
 
 ## 1. Current Status Snapshot
 
-As of **2026-04-30**, CivicSetu's RAG app is usable end-to-end, with a fresh ingestion cycle completed.
+As of **2026-05-01**, CivicSetu's RAG app is at production-grade stability (v1.0.0-level), with mobile responsiveness and retrieval quality fixes live.
 
+- **Phase 9 Complete (Mobile Responsive)**
+  - Dual-pane layout for desktop; tabbed "Digital Ledger" UI for mobile.
+  - Interactive Graph Explorer with section drill-down.
 - **Cloud Infrastructure Live**
   - Relational & Vector: **Neon (Postgres + pgvector)**
   - Graph: **Neo4j AuraDB**
@@ -32,21 +35,19 @@ As of **2026-04-30**, CivicSetu's RAG app is usable end-to-end, with a fresh ing
   - streaming path reuses classifier, retrieval, and reranker
   - answer text streams first
   - citations and metadata are extracted in a second fast pass
-- **Latest eval artifact improved a lot over old smoke baseline**
+- **Latest eval artifact (0.90 Faithfulness)**
   - `eval_results.json` dated **2026-04-28**
   - `faithfulness=0.900`
   - `answer_relevancy=0.858`
   - `context_precision=0.696`
   - `pass_rate=0.581`
-- **Knowledge Graph Scale (as of 2026-04-30)**
+- **Knowledge Graph Scale (as of 2026-05-01)**
   - Documents: `6`
-  - Sections: `1,160`
-  - `REFERENCES` edges: `314`
-  - `DERIVED_FROM` edges: `62`
+  - Sections: `2,090`
+  - Edges: `2,321` (REFERENCES, DERIVED_FROM, HAS_SECTION)
 - **Main remaining weakness**
-  - multi-jurisdiction retrieval still weak
-  - `MULTI` rows pass only `20%`
-  - common `fact_lookup` traffic is still less reliable than penalty or graph-heavy queries
+  - multi-jurisdiction retrieval still weak (`MULTI` rows pass only `20%`)
+  - context precision for broad fact lookups needs further HNSW tuning
 
 ---
 
@@ -121,7 +122,7 @@ Current defaults from `config/settings.py`:
 - `embedding_model = nomic-embed-text`
 - `embedding_dimension = 768`
 
-Query and document embeddings use asymmetric prefixes compatible with Nomic-style retrieval.
+Query and document embeddings use asymmetric prefixes (`search_query: ` vs `search_document: `) compatible with Nomic-style retrieval.
 
 ### 3.6 Graph Seeding
 
@@ -156,10 +157,10 @@ Current route mapping:
 | Query Type | Route |
 |---|---|
 | `fact_lookup` | `vector_retrieval` |
-| `cross_reference` | `graph_retrieval` |
+| `cross_reference" | `graph_retrieval` |
 | `penalty_lookup` | `graph_retrieval` |
 | `temporal` | `graph_retrieval` |
-| `conflict_detection` | `hybrid_retrieval` |
+| `conflict_detection" | `hybrid_retrieval` |
 
 Classifier fallback: if JSON parse fails, default to `fact_lookup` with original query.
 
@@ -170,22 +171,20 @@ All non-streaming LLM calls use `_llm_call()`. Streaming uses `_llm_stream()`.
 Current model chain:
 
 ```text
-THINKING tier
-1. gemini/gemini-3.1-flash-lite-preview
+THINKING tier (Generator)
+1. gemini/gemini-1.5-flash
 2. groq/llama-3.3-70b-versatile
-3. openrouter/meta-llama/llama-3.3-70b-instruct:free
-4. openrouter/qwen/qwen3.6-plus:free
+3. NVIDIA NIM: z-ai/glm4.7 | minimaxai/minimax-m2.7
 
-FAST tier
-1. gemini/gemini-3.1-flash-lite-preview
+FAST tier (Classifier/Validator)
+1. gemini/gemini-1.5-flash
 ```
 
 Provider notes:
 
-- non-NVIDIA models go through LiteLLM
-- NVIDIA-backed models use `ChatNVIDIA` directly
-- generator and metadata extraction use `temperature=0.0`
-- fast-tier tasks use the lighter chain
+- NVIDIA-hosted models (Minimax, GLM) use `https://integrate.api.nvidia.com/v1`
+- `temperature=0.0` for all grounding tasks
+- Gemini models use a temperature of `1.0` if specified as such by provider requirements for certain tiers.
 
 ---
 
@@ -197,38 +196,21 @@ Hybrid retrieval combines vector similarity and PostgreSQL full-text search, the
 
 Used to catch semantic matches when wording differs from statute text.
 
-Strength:
-
-- good for paraphrase and plain-English phrasing
-
-Weakness:
-
-- can still over-focus on one jurisdiction or sub-clause family
-
 ### 5.2 Full-Text Search
 
-Used for exact legal wording, section numbers, and important terms.
-
-Strength:
-
-- precise keyword and section hits
-
-Weakness:
-
-- misses paraphrases and concept-only questions
+Used for exact legal wording, section numbers, and important terms via `websearch_to_tsquery`.
 
 ### 5.3 Reciprocal Rank Fusion
 
 Vector and FTS results are merged with RRF so chunks that rank well in both signals rise to the top.
 
-### 5.4 Section Family Expansion
+### 5.4 Section-ID-Aware Direct Lookup
 
-Top merged sections expand to include parent and sibling sub-sections.
+If a query contains explicit section/rule numbers (e.g., "Section 18 refund"), the retriever performs a direct indexed lookup for those sections and **pins** them to the top of the retrieval list. This acts as a safety net when semantic search fails to rank the exact section high enough.
 
-Purpose:
+### 5.5 Central Act Supplementation
 
-- restore surrounding legal context for split sections
-- prevent generator from seeing one isolated sub-clause only
+For queries filtered by a specific State Jurisdiction (e.g., Maharashtra), the retriever automatically supplements results with chunks from the **Central RERA Act 2016**. This is critical because state rules often omit core definitions or penalties that are defined once in the Central Act.
 
 ---
 
@@ -239,17 +221,16 @@ Used for section-centric questions and legal relationships.
 Current behavior:
 
 - extract section or rule IDs from query
-- traverse Neo4j relationships (`REFERENCES` and `DERIVED_FROM`) populated during [Graph Seeding](#36-graph-seeding)
+- traverse Neo4j relationships (`REFERENCES` and `DERIVED_FROM`)
 - hydrate matching sections back from Postgres
 
 Graph retrieval is especially important for:
 
 - explicit section lookups
 - penalty questions
-- temporal questions
 - central vs state derivation paths
 
-Pinned chunks stay ahead of reranked chunks so exact requested sections do not get buried.
+Pinned chunks (from direct lookup or graph traversal) stay ahead of reranked chunks.
 
 ---
 
@@ -257,36 +238,20 @@ Pinned chunks stay ahead of reranked chunks so exact requested sections do not g
 
 ### 7.1 Cross-Encoder
 
-`retrieval/reranker.py` uses FlashRank with current default:
-
-- `reranker_model = ms-marco-MiniLM-L-12-v2`
+`retrieval/reranker.py` uses FlashRank (`ms-marco-MiniLM-L-12-v2`).
 
 Pipeline:
 
 1. deduplicate by `(section_id, doc_name)`
 2. split pinned vs rankable chunks
 3. rerank rankable chunks with cross-encoder
-4. filter by minimum score
-5. apply score-gap cutoff
+4. filter by minimum score (0.05)
+5. apply score-gap cutoff (0.95)
 6. prepend pinned chunks
 
-### 7.2 Current Thresholds
+### 7.2 Context Assembly
 
-Current defaults:
-
-- `reranker_score_threshold = 0.05`
-- `reranker_score_gap = 0.95`
-
-These are intentionally recall-friendly compared to older stricter settings.
-
-### 7.3 Final Context Assembly
-
-Current max context size is **7 chunks**.
-
-Assembly rule:
-
-- pinned chunks first
-- then top reranked chunks until 7 total
+Max context size is **7 chunks**. Pinned chunks (exact matches) are never discarded by the reranker unless the context is fully saturated.
 
 ---
 
@@ -294,98 +259,42 @@ Assembly rule:
 
 ### 8.1 Buffered Generation
 
-`generator_node()` builds a numbered context block and asks the model for JSON output:
-
-```json
-{
-  "answer": "<markdown>",
-  "confidence_score": 0.0,
-  "cited_chunks": [1, 3],
-  "amendment_notice": null,
-  "conflict_warnings": []
-}
-```
-
-If parsing fails but raw text exists, answer text is salvaged and citations fall back to all visible chunks.
+`generator_node()` builds a numbered context block and asks for JSON output.
 
 ### 8.2 Streaming Generation
 
 `stream_generator_node()` now drives SSE output.
-
-Flow:
-
-1. run classifier, retrieval, reranker
-2. stream plain-text answer tokens to client
-3. run a second fast metadata extraction prompt
-4. map `cited_chunks` indices back to real citations
-
-Why split answer and metadata:
-
-- keeps first-token latency lower
-- avoids forcing model to stream valid JSON
-- still preserves grounded citations in final event
+1. Run classification/retrieval/reranking.
+2. Stream answer tokens immediately.
+3. Run a second fast metadata extraction prompt
+4. Push metadata/citations as the final SSE event.
 
 ### 8.3 Tone Hints by Query Type
 
-Current tone shaping:
-
-| Type | Current Hint |
+| Type | Tone Guidance |
 |---|---|
-| `fact_lookup` | direct answer, no analogies or metaphors |
-| `penalty_lookup` | lead with consequence |
-| `cross_reference` | explain cited section first, then linked sections present in context |
-| `conflict_detection` | only claim conflict if both sides are present |
-| `temporal` | lead with exact time value if present, otherwise say it is missing |
-
-### 8.4 Citation Extraction
-
-Both buffered and streaming generators anchor citations from 1-based `cited_chunks` indices.
-
-Effect:
-
-- citations reflect chunks actually used by generator
-- not every retrieved chunk becomes a citation
+| `fact_lookup` | Direct, no metaphors, cite per bullet. |
+| `penalty_lookup` | Lead with consequence/penalty. |
+| `cross_reference` | Explain primary section, then connections. |
+| `conflict_detection` | Flag contradiction ONLY if both sides are in context. |
+| `temporal` | Lead with exact numeric deadline/time. |
 
 ---
 
 ## 9. Validation
 
-### 9.1 Current Validator Design
+### 9.1 Validator Design
 
-Current validator is lightweight and **not** an LLM verifier.
+`validator_node()` treats `confidence_score < 0.2` as a hallucination risk.
+- Returns `hallucination_flag: True` if score is below floor.
+- Graph triggers a **retry** (up to 2 times) with different retrieval parameters if flagged.
 
-`validator_node()` currently:
+### 9.2 Output Guardrails
 
-- returns early if answer or chunks are missing
-- treats `confidence_score < 0.2` as a hallucination risk signal
-- otherwise preserves generator confidence
-
-This is cheaper and faster than second-pass validation, but weaker as a grounding guarantee.
-
-### 9.2 Retry Logic
-
-Current retry rule:
-
-```text
-no reranked chunks -> end
-confidence < 0.2 and retry_count < 2 -> retry
-otherwise -> end
-```
-
-Max retries: **2**
-
-Consequence:
-
-- avoids excessive cost
-- surfaces more low-confidence answers instead of repeatedly re-running graph
-
-### 9.3 Output Guardrails
-
-`guardrails/output_guard.py` still does final shaping:
-
-- below confidence floor, return `InsufficientInfoResponse`
-- always append disclaimer
-- input guard handles safety/PII before graph execution
+`guardrails/output_guard.py`:
+- Intercepts low-confidence or safe-guard failures.
+- Returns `InsufficientInfoResponse` when grounding is weak.
+- Appends legal disclaimer.
 
 ---
 
@@ -393,199 +302,28 @@ Consequence:
 
 ### 10.1 Two-Phase Architecture
 
-Evaluation is checkpointed into two phases:
+- **Phase 1:** Graph invocation -> `eval_phase1_results.json`.
+- **Phase 2:** RAGAS scoring -> `eval_results.json`.
 
-- **Phase 1:** invoke graph -> `eval_phase1_results.json`
-- **Phase 2:** score with RAGAS -> `eval_results.json`
+### 10.2 Dataset & Metrics
 
-Important current behavior:
-
-- phase 1 resumes from valid cached rows
-- phase 2 resumes from already scored rows
-- failures do not require restarting from row 1
-
-### 10.2 Dataset
-
-`eval/golden_dataset.jsonl` currently has **31 rows** across:
-
-- `CENTRAL`
-- `MAHARASHTRA`
-- `UTTAR_PRADESH`
-- `KARNATAKA`
-- `TAMIL_NADU`
-- `MULTI`
-
-Each row includes:
-
-- `query`
-- `query_type`
-- `ground_truth`
-- `expected_section_ids`
-
-### 10.3 Judge Providers
-
-Current supported judge providers:
-
-```bash
-JUDGE_PROVIDER=groq       JUDGE_MODEL=llama-3.3-70b-versatile
-JUDGE_PROVIDER=gemini     JUDGE_MODEL=gemini/gemma-4-31b-it
-JUDGE_PROVIDER=openrouter JUDGE_MODEL=meta-llama/llama-3.3-70b-instruct
-JUDGE_PROVIDER=osmapi     JUDGE_MODEL=qwen3.5-397b-a17b
-JUDGE_PROVIDER=nvidia     JUDGE_MODEL=z-ai/glm4.7
-```
-
-Current rate-limit controls:
-
-- `PHASE2_DELAY_SEC=20`
-- `PHASE2_MAX_RETRIES=4`
-- retry delay parsed from provider errors when available
-
-### 10.4 Judge Input Trimming
-
-Current defaults:
-
-```text
-RAGAS_MAX_CONTEXTS = 7
-RAGAS_CONTEXT_CHAR_LIMIT = 1200
-RAGAS_ANSWER_CHAR_LIMIT = 1500
-RAGAS_REFERENCE_CHAR_LIMIT = 600
-```
-
-### 10.5 Latest Full Eval Results
-
-Source: `eval_results.json` generated on **2026-04-28**
-
-Run config captured in artifact:
-
-- graph model: `openai/z-ai/glm4.7`
-- judge model: `qwen3.5-397b-a17b`
-- pass threshold: `0.7`
-
-Overall:
-
-| Metric | Value |
-|---|---|
-| Faithfulness | `0.900` |
-| Answer Relevancy | `0.858` |
-| Context Precision | `0.696` |
-| Pass Rate | `0.581` |
-| P50 Latency | `101,853.7 ms` |
-| P90 Latency | `161,085.2 ms` |
-
-By query type:
-
-| Query Type | Faithfulness | Relevancy | Precision | Pass Rate |
-|---|---|---|---|---|
-| `penalty_lookup` | `0.866` | `0.873` | `1.000` | `1.000` |
-| `temporal` | `0.965` | `0.841` | `0.713` | `0.500` |
-| `cross_reference` | `0.894` | `0.796` | `0.736` | `0.500` |
-| `conflict_detection` | `0.899` | `0.911` | `0.551` | `0.500` |
-| `fact_lookup` | `0.880` | `0.865` | `0.513` | `0.429` |
-
-By jurisdiction:
-
-| Jurisdiction | Faithfulness | Relevancy | Precision | Pass Rate |
-|---|---|---|---|---|
-| `TAMIL_NADU` | `0.978` | `0.900` | `0.747` | `0.800` |
-| `KARNATAKA` | `0.907` | `0.847` | `0.851` | `0.800` |
-| `UTTAR_PRADESH` | `0.978` | `0.904` | `0.600` | `0.600` |
-| `MAHARASHTRA` | `0.834` | `0.879` | `0.702` | `0.600` |
-| `CENTRAL` | `0.933` | `0.792` | `0.912` | `0.500` |
-| `MULTI` | `0.763` | `0.838` | `0.322` | `0.200` |
-
-Interpretation:
-
-- grounding is now strong enough that hallucination is no longer the primary failure mode
-- ranking quality improved materially
-- multi-jurisdiction comparison remains the biggest retrieval gap
-- eval latency is high enough that streaming is important for user-facing UX
+- **Rows:** 31 (Central, 4 States, Multi-Jurisdiction).
+- **Primary Metrics:** Faithfulness, Answer Relevancy, Context Precision.
+- **Goal:** Faithfulness > 0.85; Answer Relevancy > 0.80.
 
 ---
 
 ## 11. Known Failure Modes
 
-### 11.1 Multi-Jurisdiction Retrieval
-
-Cross-jurisdiction questions still underperform.
-
-Observed symptom:
-
-- `MULTI` pass rate only `0.200`
-
-Likely causes:
-
-- one jurisdiction dominates semantic retrieval
-- reranker still sees mixed chunks without explicit two-sided decomposition
-
-### 11.2 Fact Lookup Precision
-
-`fact_lookup` is still weakest among common traffic:
-
-- pass rate `0.429`
-- context precision `0.513`
-
-Likely causes:
-
-- broad questions invite many semantically related sub-clauses
-- exact top-level section sometimes loses to more specific descendants
-
-### 11.3 Latency
-
-Eval-mode latency remains large:
-
-- p50 ~102 seconds
-- p90 ~161 seconds
-
-Implication:
-
-- buffered endpoint is expensive for user experience
-- streaming endpoint is necessary, not optional
+- **Multi-Jurisdiction Retrieval:** Reranker often prefers one jurisdiction's terminology, leading to unbalanced context for comparison queries.
+- **Large Context Noise:** 7 chunks sometimes include irrelevant sub-clauses that distract the generator.
 
 ---
 
-## 12. Configuration Reference
+## 12. Implementation Checklist
 
-Important RAG settings from `config/settings.py`:
-
-| Parameter | Default | Effect |
-|---|---|---|
-| `primary_model` | `gemini/gemini-3.1-flash-lite-preview` | main thinking-tier model |
-| `fast_model` | `gemini/gemini-3.1-flash-lite-preview` | fast-tier tasks |
-| `fallback_model_1` | `groq/llama-3.3-70b-versatile` | first fallback |
-| `fallback_model_2` | `openrouter/meta-llama/llama-3.3-70b-instruct:free` | second fallback |
-| `fallback_model_3` | `openrouter/qwen/qwen3.6-plus:free` | third fallback |
-| `embedding_model` | `nomic-embed-text` | embedding model |
-| `embedding_dimension` | `768` | pgvector dimension |
-| `reranker_model` | `ms-marco-MiniLM-L-12-v2` | FlashRank cross-encoder |
-| `reranker_score_threshold` | `0.05` | minimum score to keep |
-| `reranker_score_gap` | `0.95` | score-cliff cutoff |
-
-Important eval env vars:
-
-| Env Var | Effect |
-|---|---|
-| `EVAL_PHASE` | run phase 1 only, phase 2 only, or both |
-| `EVAL_LIMIT` | limit number of rows |
-| `EVAL_IDS` | evaluate only specific row IDs |
-| `EVAL_JURISDICTION` | evaluate one jurisdiction only |
-| `JUDGE_PROVIDER` | judge backend |
-| `JUDGE_MODEL` | judge model |
-| `NO_REASONING` | disable thinking where supported |
-| `PASS_THRESHOLD` | pass threshold |
-| `PHASE2_DELAY_SEC` | inter-row delay for judge calls |
-| `RAGAS_MAX_CONTEXTS` | contexts sent to judge |
-| `RAGAS_CONTEXT_CHAR_LIMIT` | trim limit per context |
-
----
-
-## 13. Implementation Checklist
-
-When adding a new jurisdiction or corpus:
-
-- add `DocumentSpec` with correct page cap
-- verify PDF is text-extractable, not image-only
-- ingest and inspect fallback chunking logs
-- verify chunk counts in Postgres
-- run graph seeding (manual via `scripts/seed_phase3.py` or via `scripts/ingest.py`)
-- add eval rows for all major query types
-- rerun full eval and inspect jurisdiction-specific precision
+- [x] Add `DocumentSpec` to registry.
+- [x] Verify PDF text extraction.
+- [x] Run `make ingest`.
+- [x] Seed Neo4j graph.
+- [x] Run `make eval-smoke` to verify precision.
